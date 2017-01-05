@@ -272,7 +272,6 @@ api.cancelSubscription = async function cancelSubscription (data) {
     plan = data.user.purchased.plan;
   }
 
-  let now = moment();
   let remaining = data.nextBill ? moment(data.nextBill).diff(new Date(), 'days') : 30;
   let extraDays = Math.ceil(30.5 * plan.extraMonths);
 
