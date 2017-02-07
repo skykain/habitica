@@ -25,10 +25,10 @@ const IS_PROD = nconf.get('NODE_ENV') === 'production';
 
 let amzPayment = amazonPayments.connect({
   environment: amazonPayments.Environment[IS_PROD ? 'Production' : 'Sandbox'],
-  sellerId: nconf.get('AMAZON_PAYMENTS:SELLER_ID'),
-  mwsAccessKey: nconf.get('AMAZON_PAYMENTS:MWS_KEY'),
-  mwsSecretKey: nconf.get('AMAZON_PAYMENTS:MWS_SECRET'),
-  clientId: nconf.get('AMAZON_PAYMENTS:CLIENT_ID'),
+  sellerId: nconf.get('AMAZON_PAYMENTS_SELLER_ID'),
+  mwsAccessKey: nconf.get('AMAZON_PAYMENTS_MWS_KEY'),
+  mwsSecretKey: nconf.get('AMAZON_PAYMENTS_MWS_SECRET'),
+  clientId: nconf.get('AMAZON_PAYMENTS_CLIENT_ID'),
 });
 
 let api = {};

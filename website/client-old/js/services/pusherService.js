@@ -4,7 +4,7 @@ angular.module('habitrpg')
 .factory('Pusher', ['$rootScope', 'STORAGE_SETTINGS_ID', 'Groups', 'Shared', '$state', 'Chat', 'Notification',
   function($rootScope, STORAGE_SETTINGS_ID, Groups, Shared, $state, Chat, Notification) {
     var settings = JSON.parse(localStorage.getItem(STORAGE_SETTINGS_ID));
-    var IS_PUSHER_ENABLED = window.env['PUSHER:ENABLED'] === 'true';
+    var IS_PUSHER_ENABLED = window.env['PUSHER_ENABLED'] === 'true';
 
     var partyId;
     var partyChannel;
@@ -18,7 +18,7 @@ angular.module('habitrpg')
     function connectToPusher (partyId, reconnecting) {
       console.log('Connecting to Pusher.');
 
-      api.pusher = new Pusher(window.env['PUSHER:KEY'], {
+      api.pusher = new Pusher(window.env['PUSHER_KEY'], {
         encrypted: true,
         authEndpoint: '/api/v3/user/auth/pusher',
         auth: {

@@ -2,15 +2,15 @@ import Pusher from 'pusher';
 import nconf from 'nconf';
 import { InternalServerError } from './errors';
 
-const IS_PUSHER_ENABLED = nconf.get('PUSHER:ENABLED') === 'true';
+const IS_PUSHER_ENABLED = nconf.get('PUSHER_ENABLED') === 'true';
 
 let pusherInstance;
 
 if (IS_PUSHER_ENABLED) {
   pusherInstance = new Pusher({
-    appId: nconf.get('PUSHER:APP_ID'),
-    key: nconf.get('PUSHER:KEY'),
-    secret: nconf.get('PUSHER:SECRET'),
+    appId: nconf.get('PUSHER_APP_ID'),
+    key: nconf.get('PUSHER_KEY'),
+    secret: nconf.get('PUSHER_SECRET'),
     encrypted: true,
   });
 }

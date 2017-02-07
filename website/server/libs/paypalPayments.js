@@ -28,13 +28,14 @@ const i18n = shared.i18n;
 // a web interface for billing-plan creation), see ./paypalBillingSetup.js for how. After the billing plan is created
 // there, get it's plan.id and store it in config.json
 _.each(shared.content.subscriptionBlocks, (block) => {
-  block.paypalKey = nconf.get(`PAYPAL:billing_plans:${block.key}`);
+  let upperCaseBlock = block.key.toUppercase();
+  block.paypalKey = nconf.get(`PAYPAL_BILLING_PLANS_${upperCaseBlock}`);
 });
 
 paypal.configure({
-  mode: nconf.get('PAYPAL:mode'), // sandbox or live
-  client_id: nconf.get('PAYPAL:client_id'),
-  client_secret: nconf.get('PAYPAL:client_secret'),
+  mode: nconf.get('PAYPAL_MODE'), // sandbox or live
+  client_id: nconf.get('PAYPAL_CLIENT_ID'),
+  client_secret: nconf.get('PAYPAL_CLIENT_SECRET'),
 });
 
 // TODO better handling of errors

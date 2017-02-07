@@ -8,16 +8,16 @@ var nconf = require('nconf');
 var _ = require('lodash');
 var paypal = require('paypal-rest-sdk');
 var blocks = require('../../../../common').content.subscriptionBlocks;
-var live = nconf.get('PAYPAL:mode')=='live';
+var live = nconf.get('PAYPAL_MODE')=='live';
 
 nconf.argv().env().file('user', path.join(path.resolve(__dirname, '../../../config.json')));
 
 var OP = 'create'; // list create update remove
 
 paypal.configure({
-  'mode': nconf.get("PAYPAL:mode"), //sandbox or live
-  'client_id': nconf.get("PAYPAL:client_id"),
-  'client_secret': nconf.get("PAYPAL:client_secret")
+  'mode': nconf.get("PAYPAL_MODE"), //sandbox or live
+  'client_id': nconf.get("PAYPAL_CLIENT_ID"),
+  'client_secret': nconf.get("PAYPAL_CLIENT_SECRET")
 });
 
 // https://developer.paypal.com/docs/api/#billing-plans-and-agreements
@@ -56,7 +56,7 @@ switch(OP) {
     });
     break;
   case "get":
-    paypal.billingPlan.get(nconf.get("PAYPAL:billing_plans:12"), function (err, plan) {
+    paypal.billingPlan.get(nconf.get("PAYPAL_BILLING_PLANS_BASIC_12MO"), function (err, plan) {
       console.log({err:err, plan:plan});
     })
     break;
@@ -68,7 +68,7 @@ switch(OP) {
         "cancel_url": "https://habitica.com"
       }
     };
-    paypal.billingPlan.update(nconf.get("PAYPAL:billing_plans:12"), update, function (err, res) {
+    paypal.billingPlan.update(nconf.get("PAYPAL_BILLING_PLANS_BASIC_12MO"), update, function (err, res) {
       console.log({err:err, plan:res});
     });
     break;

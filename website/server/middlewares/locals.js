@@ -14,7 +14,7 @@ import { mods } from '../models/user';
 const CLIENT_VARS = ['language', 'isStaticPage', 'availableLanguages', 'translations',
                      'FACEBOOK_KEY', 'GOOGLE_CLIENT_ID', 'NODE_ENV', 'BASE_URL', 'GA_ID',
                      'AMAZON_PAYMENTS', 'STRIPE_PUB_KEY', 'AMPLITUDE_KEY',
-                     'worldDmg', 'mods', 'IS_MOBILE', 'PUSHER:KEY', 'PUSHER:ENABLED'];
+                     'worldDmg', 'mods', 'IS_MOBILE', 'PUSHER_KEY', 'PUSHER_ENABLED'];
 
 let env = {
   getManifestFiles,
@@ -25,12 +25,12 @@ let env = {
   Content: shared.content,
   availableLanguages: i18n.availableLanguages,
   AMAZON_PAYMENTS: {
-    SELLER_ID: nconf.get('AMAZON_PAYMENTS:SELLER_ID'),
-    CLIENT_ID: nconf.get('AMAZON_PAYMENTS:CLIENT_ID'),
+    SELLER_ID: nconf.get('AMAZON_PAYMENTS_SELLER_ID'),
+    CLIENT_ID: nconf.get('AMAZON_PAYMENTS_CLIENT_ID'),
   },
 };
 
-'NODE_ENV BASE_URL GA_ID STRIPE_PUB_KEY FACEBOOK_KEY GOOGLE_CLIENT_ID AMPLITUDE_KEY PUSHER:KEY PUSHER:ENABLED'
+'NODE_ENV BASE_URL GA_ID STRIPE_PUB_KEY FACEBOOK_KEY GOOGLE_CLIENT_ID AMPLITUDE_KEY PUSHER_KEY PUSHER_ENABLED'
   .split(' ')
   .forEach(key => {
     env[key] = nconf.get(key);

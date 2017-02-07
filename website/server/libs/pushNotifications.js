@@ -10,15 +10,15 @@ import {
 } from './aws';
 import gcmLib from 'node-gcm'; // works with FCM notifications too
 
-const FCM_API_KEY = nconf.get('PUSH_CONFIGS:FCM_SERVER_API_KEY');
+const FCM_API_KEY = nconf.get('PUSH_CONFIGS_FCM_SERVER_API_KEY');
 
 const fcmSender = FCM_API_KEY ? new gcmLib.Sender(FCM_API_KEY) : undefined;
 
 let apn;
 
 // Load APN certificate and key from S3
-const APN_ENABLED = nconf.get('PUSH_CONFIGS:APN_ENABLED') === 'true';
-const S3_BUCKET = nconf.get('S3:bucket');
+const APN_ENABLED = nconf.get('PUSH_CONFIGS_APN_ENABLED') === 'true';
+const S3_BUCKET = nconf.get('S3_BUCKET');
 
 if (APN_ENABLED) {
   Bluebird.all([

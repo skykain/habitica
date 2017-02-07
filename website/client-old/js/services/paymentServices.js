@@ -8,7 +8,7 @@ function($rootScope, User, $http, Content) {
 
   window.onAmazonLoginReady = function(){
     isAmazonReady = true;
-    amazon.Login.setClientId(window.env.AMAZON_PAYMENTS.CLIENT_ID);
+    amazon.Login.setClientId(window.env.AMAZON_PAYMENTS_CLIENT_ID);
   };
 
   Payments.showStripe = function(data) {
@@ -143,7 +143,7 @@ function($rootScope, User, $http, Content) {
     });
 
     modal.rendered.then(function(){
-      OffAmazonPayments.Button('AmazonPayButton', window.env.AMAZON_PAYMENTS.SELLER_ID, {
+      OffAmazonPayments.Button('AmazonPayButton', window.env.AMAZON_PAYMENTS_SELLER_ID, {
         type:  'PwA',
         color: 'Gold',
         size:  'small',
@@ -203,7 +203,7 @@ function($rootScope, User, $http, Content) {
 
   Payments.amazonPayments.initWidgets = function() {
     var walletParams = {
-      sellerId: window.env.AMAZON_PAYMENTS.SELLER_ID,
+      sellerId: window.env.AMAZON_PAYMENTS_SELLER_ID,
       design: {
         designMode: 'responsive'
       },
@@ -225,7 +225,7 @@ function($rootScope, User, $http, Content) {
         Payments.amazonPayments.billingAgreementId = billingAgreement.getAmazonBillingAgreementId();
 
         new OffAmazonPayments.Widgets.Consent({
-          sellerId: window.env.AMAZON_PAYMENTS.SELLER_ID,
+          sellerId: window.env.AMAZON_PAYMENTS_SELLER_ID,
           amazonBillingAgreementId: Payments.amazonPayments.billingAgreementId,
           design: {
             designMode: 'responsive'
