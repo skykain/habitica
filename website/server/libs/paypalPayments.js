@@ -28,7 +28,7 @@ const i18n = shared.i18n;
 // a web interface for billing-plan creation), see ./paypalBillingSetup.js for how. After the billing plan is created
 // there, get it's plan.id and store it in config.json
 _.each(shared.content.subscriptionBlocks, (block) => {
-  let upperCaseBlock = block.key.toUppercase();
+  let upperCaseBlock = block.key.toUpperCase();
   block.paypalKey = nconf.get(`PAYPAL_BILLING_PLANS_${upperCaseBlock}`);
 });
 
