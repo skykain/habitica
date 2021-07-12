@@ -12,6 +12,7 @@
           <div
             v-for="(collect, key) of quest.collect"
             :key="key"
+            class="quest-item"
           >
             <span>{{ collect.count }} {{ getCollectText(collect) }}</span>
           </div>
@@ -36,7 +37,10 @@
         </dd>
       </div>
     </div>
-    <div v-if="quest.event">
+    <div
+      v-if="quest.event && !abbreviated"
+      class="m-auto"
+    >
       {{ limitedString }}
     </div>
   </div>
@@ -48,37 +52,51 @@
 .row {
   display: table;
   margin: 0;
+  width: 100%;
 }
 
 .table-row {
   display: table-row;
-  margin-bottom: 4px;
+  font-size: 14px;
+  height: 1.5rem;
+
+  &:last-of-type {
+    dd {
+      padding-bottom: 0;
+    }
+  }
 }
 
 dd {
-  height: 24px;
   padding-left: 1em;
-  padding-top: 3px;
-  padding-bottom: 3px;
+  text-align: right;
+
+  padding-bottom: 0.5rem;
+
+  .quest-item {
+    white-space: nowrap;
+  }
 }
 
 dt, dd {
   display: table-cell;
-  vertical-align: middle;
-}
-
-dt, dd, dd > * {
-  text-align: left;
+  vertical-align: top;
+  height: 16px;
+  max-height: 16px;
 }
 
 dt {
-  font-size: 1.3em;
-  line-height: 1.2;
+  font-weight: bold;
+  font-stretch: normal;
+  font-style: normal;
+  line-height: 1.33;
+  letter-spacing: normal;
+  text-align: left;
   color: $gray-50;
 }
 
 .svg-icon {
-  margin-right: 4px;
+  margin-left: 4px;
 }
 
 .small-version {
@@ -92,10 +110,11 @@ dt {
 </style>
 
 <style lang="scss">
+@import '~@/assets/scss/colors.scss';
+
 .questPopover {
   dt {
     color: inherit;
-    font-size: 1em;
     white-space: nowrap;
   }
 }
@@ -112,7 +131,7 @@ dt {
   fill: #ffb445;
 }
 .star-empty {
-  fill: #686274;
+  fill: $gray-400;
 }
 
 </style>
@@ -124,12 +143,14 @@ import svgStar from '@/assets/svg/difficulty-star.svg';
 import svgStarHalf from '@/assets/svg/difficulty-star-half.svg';
 import svgStarEmpty from '@/assets/svg/difficulty-star-empty.svg';
 
-import seasonalShopConfig from '@/../../common/script/libs/shops-seasonal.config';
-
 export default {
   props: {
     quest: {
       type: Object,
+    },
+    abbreviated: {
+      type: Boolean,
+      default: false,
     },
   },
   data () {
@@ -182,13 +203,14 @@ export default {
       return collect.text;
     },
     countdownString () {
-      const diffDuration = moment.duration(moment(seasonalShopConfig.dateRange.end).diff(moment()));
+      if (!this.quest.event) return;
+      const diffDuration = moment.duration(moment(this.quest.event.end).diff(moment()));
 
       if (diffDuration.asSeconds() <= 0) {
         this.limitedString = this.$t('noLongerAvailable');
-      } else if (diffDuration.days() > 0) {
+      } else if (diffDuration.days() > 0 || diffDuration.months() > 0) {
         this.limitedString = this.$t('limitedAvailabilityDays', {
-          days: diffDuration.days(),
+          days: moment(this.quest.event.end).diff(moment(), 'days'),
           hours: diffDuration.hours(),
           minutes: diffDuration.minutes(),
         });

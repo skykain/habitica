@@ -76,9 +76,9 @@ export default {
         this.limitedString = this.$t('noLongerAvailable');
         this.availabilityClass = 'expired';
         this.cancelAutoUpdate();
-      } else if (diffDuration.days() > 0) {
+      } else if (diffDuration.days() > 0 || diffDuration.months() > 0) {
         this.limitedString = this.$t('limitedAvailabilityDays', {
-          days: diffDuration.days(),
+          days: moment(this.endDate).diff(moment(), 'days'),
           hours: diffDuration.hours(),
           minutes: diffDuration.minutes(),
         });

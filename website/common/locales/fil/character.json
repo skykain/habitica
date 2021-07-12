@@ -1,9 +1,9 @@
 {
-    "communityGuidelinesWarning": "Please keep in mind that your Display Name, profile photo, and blurb must comply with the <a href='https://habitica.com/static/community-guidelines' target='_blank'>Community Guidelines</a> (e.g. no profanity, no adult topics, no insults, etc). If you have any questions about whether or not something is appropriate, feel free to email <%= hrefBlankCommunityManagerEmail %>!",
+    "communityGuidelinesWarning": "Alalahanin na ang iyong Display Name, profile photo, at blurb ay dapat sumusunod sa <a href='https://habitica.com/static/community-guidelines' target='_blank'>Community Guidelines</a> (hal. walang lapastangang pananalita, walang pangmatandang paksa, walang pag-iinsulto, etc). Kung mayroon pang mga katanungan patungkol man o hindi sa kung ano ang naaangkop, huwag mag-alangang mag-email sa <%= hrefBlankCommunityManagerEmail %>!",
     "profile": "Profile",
-    "avatar": "Customize Avatar",
-    "editAvatar": "Edit Avatar",
-    "noDescription": "This Habitican hasn't added a description.",
+    "avatar": "I-customize ang Avatar",
+    "editAvatar": "I-edit ang Avatar",
+    "noDescription": "Ang Habitican na ito ay hindi nagdagdag ng deskripsyon.",
     "noPhoto": "Ang Habitican na ito ay hindi pa naglalagay ng kanyang litrato.",
     "other": "Other",
     "fullName": "Buong Pangalan",
@@ -85,7 +85,7 @@
     "allocatePerPop": "Add a Point to Perception",
     "allocateInt": "Points allocated to Intelligence:",
     "allocateIntPop": "Add a Point to Intelligence",
-    "noMoreAllocate": "Ngayon at naabot mo ang level 100, hindi ka na makakukuha ng Stat Point. Maaari kang magpatuloy sa paglevel up, o magsimula ng bagong paglalakbay sa level 1 sa paggamit ng <a href='http://habitica.wikia.com/wiki/Orb_of_Rebirth' target='_blank'>Orbe ng Pagkabuhay</a>!",
+    "noMoreAllocate": "Ngayon at naabot mo ang level 100, hindi ka na makakakuha ng Stat Point. Maaari kang magpatuloy sa paglevel up, o magsimula ng bagong paglalakbay sa level 1 sa paggamit ng <a href='http://habitica.wikia.com/wiki/Orb_of_Rebirth' target='_blank'>Orbe ng Pagkabuhay</a>!",
     "stats": "Stats",
     "achievs": "Achievements",
     "strength": "Strength",
@@ -132,7 +132,7 @@
     "healerText": "Healers stand impervious against harm, and extend that protection to others. Missed Dailies and bad Habits don't faze them much, and they have ways to recover Health from failure. Play a Healer if you enjoy assisting others in your Party, or if the idea of cheating Death through hard work inspires you!",
     "optOutOfClasses": "Opt Out",
     "chooseClass": "Choose your Class",
-    "chooseClassLearnMarkdown": "[Learn more about Habitica's class system](http://habitica.wikia.com/wiki/Class_System)",
+    "chooseClassLearnMarkdown": "[Matuto pa sa class system ng Habitica](https://habitica.wikia.com/wiki/Class_System)",
     "optOutOfClassesText": "Can't be bothered with classes? Want to choose later? Opt out - you'll be a warrior with no special abilities. You can read about the class system later on the wiki and enable classes at any time under User Icon > Settings.",
     "selectClass": "Select <%= heroClass %>",
     "select": "Select",
@@ -183,7 +183,8 @@
     "statPoints": "Stat Points",
     "pts": "pts",
     "chatCastSpellUser": "<%= username %> casts <%= spell %> sa <%= target %>.",
-    "chatCastSpellParty": "<%= username %> casts <%= spell %> para sa partido.",
-    "purchasePetItemConfirm": "Ang pagbiling nito ay lalagpas sa bilang ng kagamitang kailangan mo upang ma-hatch ang mga posibleng <%= itemText %> alaga. Sigurado ka ba?",
-    "purchaseForGold": "Bilhin ng <%= cost %> Ginto?"
+    "chatCastSpellParty": "Nag-cast si <%= username %> ng <%= spell %> para sa partido.",
+    "purchasePetItemConfirm": "Ang pagbili nito ay lalagpas sa bilang ng gamit na kailangan mo upang ma-hatch ang mga posibleng <%= itemText %> alaga. Sigurado ka ba?",
+    "purchaseForGold": "Bilhin ng <%= cost %> Ginto?",
+    "notEnoughGold": "Hindi sapat na ginto."
 }
