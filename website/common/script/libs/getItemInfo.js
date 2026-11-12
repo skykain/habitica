@@ -8,14 +8,27 @@ import isPinned from './isPinned';
 import isFreeRebirth from './isFreeRebirth';
 import getOfficialPinnedItems from './getOfficialPinnedItems';
 
+import { ALWAYS_AVAILABLE_CUSTOMIZATIONS } from '../content/constants/schedule';
+
 function lockQuest (quest, user) {
-  if (quest.key === 'lostMasterclasser1') return !(user.achievements.quests.dilatoryDistress3 && user.achievements.quests.mayhemMistiflying3 && user.achievements.quests.stoikalmCalamity3 && user.achievements.quests.taskwoodsTerror3);
-  if (quest.lvl && user.stats.lvl < quest.lvl) return true;
-  if (quest.unlockCondition && (quest.key === 'moon1' || quest.key === 'moon2' || quest.key === 'moon3')) {
-    return user.loginIncentives < quest.unlockCondition.incentiveThreshold;
+  // checks series quests, including Masterclasser
+  if (quest.prereqQuests) {
+    if (!user.achievements.quests) return true;
+    for (const prereq of quest.prereqQuests) {
+      if (!user.achievements.quests[prereq]) return true;
+    }
   }
-  if (user.achievements.quests) return quest.previous && !user.achievements.quests[quest.previous];
-  return quest.previous;
+  // checks quest & user level against quest level
+  if (quest.lvl && user.stats.lvl < quest.lvl) return true;
+
+  // checks unlockCondition.incentiveThreshold for Lunar Battle
+  if (
+    quest.unlockCondition
+    && quest.unlockCondition.incentiveThreshold
+    && user.loginIncentives < quest.unlockCondition.incentiveThreshold
+  ) return true;
+  // // then if we've passed all the checks
+  return false;
 }
 
 function isItemSuggested (officialPinnedItems, itemInfo) {
@@ -40,12 +53,20 @@ function getDefaultGearProps (item, language) {
     per: item.per,
     con: item.con,
     klass: item.klass,
-    event: item.event,
     set: item.set,
+    season: item.season,
   };
 }
 
-export default function getItemInfo (user, type, item, officialPinnedItems, language = 'en') {
+export default function getItemInfo (
+  user,
+  type,
+  item,
+  officialPinnedItems,
+  language = null,
+  matcher = null,
+) {
+  const usedLanguage = language || ((user && user.preferences) ? user.preferences.language : null) || 'en';
   if (officialPinnedItems === undefined) {
     officialPinnedItems = getOfficialPinnedItems(user); // eslint-disable-line no-param-reassign
   }
@@ -56,8 +77,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'eggs':
       itemInfo = {
         key: item.key,
-        text: i18n.t('egg', { eggType: item.text(language) }, language),
-        notes: item.notes(language),
+        text: i18n.t('egg', { eggType: item.text(usedLanguage) }, usedLanguage),
+        notes: item.notes(usedLanguage),
         value: item.value,
         class: `Pet_Egg_${item.key}`,
         locked: false,
@@ -70,8 +91,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'hatchingPotions':
       itemInfo = {
         key: item.key,
-        text: i18n.t('potion', { potionType: item.text(language) }),
-        notes: item.notes(language),
+        text: i18n.t('potion', { potionType: item.text(usedLanguage) }, usedLanguage),
+        notes: item.notes(usedLanguage),
         class: `Pet_HatchingPotion_${item.key}`,
         value: item.value,
         locked: false,
@@ -84,8 +105,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'premiumHatchingPotion':
       itemInfo = {
         key: item.key,
-        text: i18n.t('potion', { potionType: item.text(language) }),
-        notes: `${item.notes(language)} ${item._addlNotes(language)}`,
+        text: i18n.t('potion', { potionType: item.text(usedLanguage) }, usedLanguage),
+        notes: `${item.notes(usedLanguage)} ${item._addlNotes(usedLanguage)}`,
         class: `Pet_HatchingPotion_${item.key}`,
         value: item.value,
         locked: false,
@@ -93,14 +114,13 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         purchaseType: 'hatchingPotions',
         path: item.wacky ? `wackyHatchingPotions.${item.key}` : `premiumHatchingPotions.${item.key}`,
         pinType: 'premiumHatchingPotion',
-        event: item.event,
       };
       break;
     case 'food':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         class: `Pet_Food_${item.key}`,
         value: item.value,
         locked: false,
@@ -113,16 +133,15 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'bundles':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
-        addlNotes: item.addlNotes ? item.addlNotes(language) : null,
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
+        addlNotes: item.addlNotes ? item.addlNotes(usedLanguage) : null,
         value: item.value,
         currency: 'gems',
         class: `quest_bundle_${item.key}`,
         purchaseType: 'bundles',
         path: `bundles.${item.key}`,
         pinType: 'bundles',
-        event: item.event,
       };
       break;
     case 'quests': // eslint-disable-line no-case-declarations
@@ -130,17 +149,17 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
 
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
-        addlNotes: item.addlNotes ? item.addlNotes(language) : null,
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
+        addlNotes: item.addlNotes ? item.addlNotes(usedLanguage) : null,
         group: item.group,
-        event: item.event,
         value: item.goldValue ? item.goldValue : item.value,
         locked,
         previous: content.quests[item.previous]
-          ? content.quests[item.previous].text(language)
+          ? content.quests[item.previous].text(usedLanguage)
           : null,
         unlockCondition: item.unlockCondition,
+        completed: user.achievements.quests[item.key] !== undefined,
         drop: item.drop,
         boss: item.boss,
         collect: item.collect ? _mapValues(item.collect, o => ({
@@ -169,8 +188,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'seasonalSpell':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         value: item.value,
         type: 'special',
         currency: 'gold',
@@ -179,7 +198,6 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         class: `inventory_special_${item.key}`,
         path: `spells.special.${item.key}`,
         pinType: 'seasonalSpell',
-        event: item.event,
       };
       break;
     case 'debuffPotion':
@@ -189,8 +207,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         cast: item.cast,
         immediateUse: item.immediateUse,
         target: item.target,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         value: item.value,
         type: 'debuffPotion',
         currency: 'gold',
@@ -204,8 +222,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'seasonalQuest':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         value: item.value,
         type: 'quests',
         currency: 'gems',
@@ -217,19 +235,18 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         purchaseType: 'quests',
         path: `quests.${item.key}`,
         pinType: 'seasonalQuest',
-        event: item.event,
       };
       break;
     case 'gear':
       // spread operator not available
-      itemInfo = Object.assign(getDefaultGearProps(item, language), {
-        value: item.twoHanded ? 2 : 1,
+      itemInfo = Object.assign(getDefaultGearProps(item, usedLanguage), {
+        value: item.twoHanded || item.gearSet === 'animal' ? 2 : 1,
         currency: 'gems',
         pinType: 'gear',
       });
       break;
     case 'marketGear':
-      itemInfo = Object.assign(getDefaultGearProps(item, language), {
+      itemInfo = Object.assign(getDefaultGearProps(item, usedLanguage), {
         value: item.value,
         currency: 'gold',
         pinType: 'marketGear',
@@ -239,8 +256,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'background':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         class: `icon_background_${item.key}`,
         value: item.price,
         currency: item.currency || 'gems',
@@ -254,7 +271,7 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
       itemInfo = {
         items: item.items,
         key: item.key,
-        text: item.text(language),
+        text: item.text(usedLanguage),
         value: 1,
         currency: 'hourglasses',
         purchaseType: 'mystery_set',
@@ -266,8 +283,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'potion':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(language),
+        text: item.text(usedLanguage),
+        notes: item.notes(usedLanguage),
         value: item.value,
         currency: 'gold',
         purchaseType: 'potion',
@@ -279,8 +296,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     case 'armoire':
       itemInfo = {
         key: item.key,
-        text: item.text(language),
-        notes: item.notes(user, count.remainingGearInSet(user.items.gear.owned, 'armoire')), // TODO count
+        text: item.text(usedLanguage),
+        notes: item.notes(count.remainingGearInSet(user.items.gear.owned, 'armoire'), usedLanguage),
         value: item.value,
         currency: 'gold',
         purchaseType: 'armoire',
@@ -312,8 +329,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         key: 'gem',
         purchaseType: 'gems',
         class: 'shop_gem',
-        text: i18n.t('subGemName'),
-        notes: i18n.t('subGemPop'),
+        text: i18n.t('subGemName', {}, usedLanguage),
+        notes: i18n.t('subGemPop', {}, usedLanguage),
         value: 20,
         currency: 'gold',
         path: 'special.gems',
@@ -327,8 +344,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         key: 'rebirth_orb',
         purchaseType: 'rebirth_orb',
         class: 'rebirth_orb',
-        text: i18n.t('rebirthName'),
-        notes: i18n.t('rebirthPop'),
+        text: i18n.t('rebirthName', {}, usedLanguage),
+        notes: i18n.t('rebirthPop', {}, usedLanguage),
         value: isFreeRebirth(user) ? 0 : 6,
         currency: 'gems',
         path: 'special.rebirth_orb',
@@ -342,8 +359,8 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         key: 'fortify',
         purchaseType: 'fortify',
         class: 'inventory_special_fortify',
-        text: i18n.t('fortifyName'),
-        notes: i18n.t('fortifyPop'),
+        text: i18n.t('fortifyName', {}, usedLanguage),
+        notes: i18n.t('fortifyPop', {}, usedLanguage),
         value: 4,
         currency: 'gems',
         path: 'special.fortify',
@@ -356,7 +373,7 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
         key: item.key,
         purchaseType: item.type,
         class: `shop_${item.type}_${item.key}`,
-        text: content.timeTravelStable[item.type][item.key](language),
+        text: content.timeTravelStable[item.type][item.key](usedLanguage),
         notes: '',
         value: 1,
 
@@ -367,6 +384,108 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
       };
       break;
     }
+    case 'haircolor': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_hair_bangs_${user.preferences.hair.bangs || 1}_${item.key}`,
+        currency: 'gems',
+        locked: false,
+        notes: '',
+        path: `hair.color.${item.key}`,
+        pinType: 'haircolor',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'color',
+        value: item.price,
+      };
+      break;
+    }
+    case 'hairbase': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_hair_base_${item.key}_${user.preferences.hair.color}`,
+        currency: 'gems',
+        locked: false,
+        notes: '',
+        path: `hair.base.${item.key}`,
+        pinType: 'hairbase',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'base',
+        value: item.price,
+      };
+      break;
+    }
+    case 'hairmustache': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_hair_mustache_${item.key}_${user.preferences.hair.color}`,
+        currency: 'gems',
+        locked: false,
+        notes: '',
+        path: `hair.mustache.${item.key}`,
+        pinType: 'hairmustache',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'mustache',
+        value: item.price,
+      };
+      break;
+    }
+    case 'hairbeard': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_hair_beard_${item.key}_${user.preferences.hair.color}`,
+        currency: 'gems',
+        locked: false,
+        notes: '',
+        path: `hair.beard.${item.key}`,
+        pinType: 'hairbeard',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'beard',
+        value: item.price,
+      };
+      break;
+    }
+    case 'shirt': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_${user.preferences.size}_shirt_${item.key}`,
+        currency: 'gems',
+        locked: false,
+        notes: '',
+        path: `shirt.${item.key}`,
+        pinType: 'shirt',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'shirt',
+        value: item.price,
+      };
+      break;
+    }
+    case 'skin': {
+      itemInfo = {
+        key: item.key,
+        class: `icon_skin_${item.key}`,
+        currency: 'gems',
+        locked: false,
+        path: `skin.${item.key}`,
+        notes: '',
+        pinType: 'skin',
+        purchaseType: 'customization',
+        set: item.set,
+        text: item.text(usedLanguage),
+        type: 'skin',
+        value: item.price,
+      };
+      break;
+    }
   }
 
   if (itemInfo) {
@@ -374,6 +493,11 @@ export default function getItemInfo (user, type, item, officialPinnedItems, lang
     itemInfo.pinned = isPinned(user, itemInfo, officialPinnedItems);
   } else {
     throw new BadRequest(i18n.t('wrongItemType', { type }, language));
+  }
+
+  if (matcher && (!itemInfo.set
+    || ALWAYS_AVAILABLE_CUSTOMIZATIONS.indexOf(itemInfo.set.key) === -1)) {
+    itemInfo.end = matcher.getEnd(itemInfo.key);
   }
 
   return itemInfo;

@@ -2,7 +2,6 @@ import { v4 } from 'uuid';
 import {
   generateUser,
   translate as t,
-  sleep,
 } from '../../../helpers/api-integration/v4';
 import { model as NewsPost } from '../../../../website/server/models/newsPost';
 
@@ -17,16 +16,16 @@ describe('PUT /news/:newsID', () => {
   };
   beforeEach(async () => {
     user = await generateUser({
-      'contributor.newsPoster': true,
+      'permissions.news': true,
     });
   });
 
   it('disallows access to non-admins', async () => {
-    const nonAdminUser = await generateUser({ 'contributor.newsPoster': false });
+    const nonAdminUser = await generateUser({ 'permissions.news': false });
     await expect(nonAdminUser.put('/news/1234')).to.eventually.be.rejected.and.eql({
       code: 401,
       error: 'NotAuthorized',
-      message: 'You don\'t have news poster access.',
+      message: 'You don\'t have the required privileges.',
     });
   });
 
@@ -53,7 +52,7 @@ describe('PUT /news/:newsID', () => {
 
   context('calls updateLastNewsPost', () => {
     beforeEach(async () => {
-      await NewsPost.remove({ });
+      await NewsPost.deleteMany({ });
     });
 
     it('updates post data', async () => {
@@ -61,7 +60,6 @@ describe('PUT /news/:newsID', () => {
       const updatedPost = await user.put(`/news/${existingPost._id}`, {
         title: 'Changed Title',
       });
-      await sleep(0.05);
 
       expect(NewsPost.lastNewsPost().title).to.equal(updatedPost.title);
     });
@@ -72,7 +70,6 @@ describe('PUT /news/:newsID', () => {
       await user.put(`/news/${newUnpublished._id}`, {
         title: 'Changed Title',
       });
-      await sleep(0.05);
 
       expect(NewsPost.lastNewsPost()._id).to.equal(oldPost._id);
     });
@@ -84,7 +81,6 @@ describe('PUT /news/:newsID', () => {
         publishDate: new Date(),
         published: true,
       });
-      await sleep(0.05);
 
       expect(NewsPost.lastNewsPost()._id).to.equal(newUnpublished._id);
     });
@@ -95,7 +91,6 @@ describe('PUT /news/:newsID', () => {
       await user.put(`/news/${newUnpublished._id}`, {
         publishDate: Date.now() + 50000,
       });
-      await sleep(0.05);
 
       expect(NewsPost.lastNewsPost()._id).to.equal(oldPost._id);
     });

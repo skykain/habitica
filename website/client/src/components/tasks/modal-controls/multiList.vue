@@ -4,16 +4,16 @@
     :class="{ 'break': maxItems === 0 }"
   >
     <template v-if="items.length === 0">
-      <div class="items-none">
+      <div class="items-none mb-1">
         {{ emptyMessage }}
       </div>
     </template>
     <template v-else>
       <div
-        v-for="item in truncatedSelectedItems"
+        v-for="item in items"
         :key="item.id"
         :title="item.name"
-        class="multi-item mr-1 d-inline-flex align-items-center"
+        class="multi-item mr-1 mb-1 d-inline-flex align-items-center"
         :class="{'margin-adjust': maxItems !== 0, 'pill-invert': pillInvert}"
 
         @click.stop="removeItem($event, item)"
@@ -27,18 +27,12 @@
           v-html="icons.remove"
         ></div>
       </div>
-      <div
-        v-if="remainingSelectedItems.length > 0"
-        class="items-more ml-75"
-      >
-        +{{ remainingSelectedItems.length }}
-      </div>
     </template>
   </div>
 </template>
 
 <style lang="scss">
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .multi-list {
     p {
@@ -69,7 +63,7 @@
 </style>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .margin-adjust {
     margin-top: -1px;
@@ -128,7 +122,7 @@
 </style>
 
 <script>
-import removeIcon from '@/assets/svg/remove.svg';
+import removeIcon from '@/assets/svg/remove.svg?raw';
 import markdownDirective from '@/directives/markdown';
 
 export default {

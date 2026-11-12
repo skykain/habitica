@@ -11,13 +11,9 @@
     <low-health />
     <level-up />
     <choose-class />
-    <testing />
-    <testingletiant />
     <rebirth-enabled />
     <contributor />
     <won-challenge />
-    <ultimate-gear />
-    <streak />
     <rebirth />
     <joined-guild />
     <joined-challenge />
@@ -30,16 +26,14 @@
       v-if="notificationData && notificationData.achievement"
       :data="notificationData"
     />
-    <just-add-water />
-    <lost-masterclasser />
-    <mind-over-matter />
     <onboarding-complete />
     <first-drops />
+    <group-plans-update />
   </div>
 </template>
 
 <style lang='scss'>
-  .introjs-helperNumberLayer, .introjs-bullets {
+  .introjs-helperNumberLayer, .introjs-bullets, .introjs-skipbutton {
     display: none;
   }
 
@@ -65,10 +59,10 @@
     .npc_justin_textbox {
       position: absolute;
       right: 1em;
-      top: -3.6em;
+      top: -55px;
       width: 48px;
-      height: 52px;
-      background-image: url('~@/assets/images/justin_textbox.png');
+      height: 51px;
+      background-image: url('@/assets/images/justin_textbox.png');
     }
   }
 
@@ -98,7 +92,7 @@
     box-shadow: 0 2px 2px 0 rgba(26, 24, 29, 0.16), 0 1px 4px 0 rgba(26, 24, 29, 0.12) !important;
   }
 
-  .introjs-skipbutton.btn-primary, .introjs-donebutton.btn-primary {
+  .introjs-donebutton.btn-primary {
     color: #fff;
   }
 </style>
@@ -113,8 +107,8 @@ import Vue from 'vue';
 import { toNextLevel } from '@/../../common/script/statHelpers';
 import { shouldDo } from '@/../../common/script/cron';
 import { onOnboardingComplete } from '@/../../common/script/libs/onboarding';
-import { mapState } from '@/libs/store';
 import { MAX_LEVEL_HARD_CAP } from '@/../../common/script/constants';
+import { mapState } from '@/libs/store';
 import notifications from '@/mixins/notifications';
 import guide from '@/mixins/guide';
 import { CONSTANTS, setLocalSetting } from '@/libs/userlocalManager';
@@ -128,36 +122,43 @@ import chooseClass from './achievements/chooseClass';
 import armoireEmpty from './achievements/armoireEmpty';
 import questCompleted from './achievements/questCompleted';
 import questInvitation from './achievements/questInvitation';
-import testing from './achievements/testing';
-import testingletiant from './achievements/testingletiant';
 import rebirthEnabled from './achievements/rebirthEnabled';
 import contributor from './achievements/contributor';
 import invitedFriend from './achievements/invitedFriend';
 import joinedChallenge from './achievements/joinedChallenge';
 import joinedGuild from './achievements/joinedGuild';
 import rebirth from './achievements/rebirth';
-import streak from './achievements/streak';
-import ultimateGear from './achievements/ultimateGear';
 import wonChallenge from './achievements/wonChallenge';
 import genericAchievement from './achievements/genericAchievement';
-import justAddWater from './achievements/justAddWater';
-import lostMasterclasser from './achievements/lostMasterclasser';
-import mindOverMatter from './achievements/mindOverMatter';
 import loginIncentives from './achievements/login-incentives';
 import onboardingComplete from './achievements/onboardingComplete';
 import verifyUsername from './settings/verifyUsername';
 import firstDrops from './achievements/firstDrops';
+import groupPlansUpdate from './group-plans/groupPlansUpdateModal';
 
 const NOTIFICATIONS = {
+  // general notifications
+  NEW_CONTRIBUTOR_LEVEL: {
+    achievement: true,
+    label: $t => $t('modalContribAchievement'),
+    modalId: 'contributor',
+    sticky: true,
+  },
+  // achievement notifications
+  ACHIEVEMENT: { // null data filled in handleUserNotifications
+    achievement: true,
+    modalId: 'generic-achievement',
+    label: null,
+    data: {
+      message: $t => $t('achievement'),
+      modalText: null,
+    },
+    sticky: true,
+  },
   CHALLENGE_JOINED_ACHIEVEMENT: {
     achievement: true,
     label: $t => `${$t('achievement')}: ${$t('joinedChallenge')}`,
     modalId: 'joined-challenge',
-  },
-  ULTIMATE_GEAR_ACHIEVEMENT: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('gearAchievementNotification')}`,
-    modalId: 'ultimate-gear',
   },
   GUILD_JOINED_ACHIEVEMENT: {
     label: $t => `${$t('achievement')}: ${$t('joinedGuild')}`,
@@ -169,42 +170,14 @@ const NOTIFICATIONS = {
     label: $t => `${$t('achievement')}: ${$t('invitedFriend')}`,
     modalId: 'invited-friend',
   },
-  NEW_CONTRIBUTOR_LEVEL: {
+  ACHIEVEMENT_PARTY_ON: {
     achievement: true,
-    label: $t => $t('modalContribAchievement'),
-    modalId: 'contributor',
-    sticky: true,
-  },
-  ACHIEVEMENT_ALL_YOUR_BASE: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementAllYourBase')}`,
+    label: $t => `${$t('achievement')}: ${$t('achievementPartyOn')}`,
     modalId: 'generic-achievement',
     data: {
-      achievement: 'allYourBase', // defined manually until the server sends all the necessary data
-    },
-  },
-  ACHIEVEMENT_BACK_TO_BASICS: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementBackToBasics')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'backToBasics',
-    },
-  },
-  ACHIEVEMENT_DUST_DEVIL: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementDustDevil')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'dustDevil',
-    },
-  },
-  ACHIEVEMENT_ARID_AUTHORITY: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementAridAuthority')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'aridAuthority',
+      message: $t => $t('achievement'),
+      modalText: $t => $t('achievementPartyOn'),
+      achievement: 'partyOn',
     },
   },
   ACHIEVEMENT_PARTY_UP: {
@@ -217,229 +190,36 @@ const NOTIFICATIONS = {
       achievement: 'partyUp',
     },
   },
-  ACHIEVEMENT_PARTY_ON: {
+  ACHIEVEMENT_ANIMAL_SET: {
     achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementPartyOn')}`,
+    label: $t => `${$t('achievement')}: ${$t('achievementAnimalSet')}`,
     modalId: 'generic-achievement',
     data: {
-      message: $t => $t('achievement'),
-      modalText: $t => $t('achievementPartyOn'),
-      achievement: 'partyOn',
+      achievement: 'animalSetAchievs',
     },
   },
-  ACHIEVEMENT_BEAST_MASTER: {
+  ACHIEVEMENT_PET_COLOR: {
     achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('beastAchievement')}`,
+    label: $t => `${$t('achievement')}: ${$t('achievementPetColor')}`,
     modalId: 'generic-achievement',
     data: {
-      message: $t => $t('achievement'),
-      modalText: $t => $t('beastAchievement'),
-      achievement: 'beastMaster',
+      achievement: 'petColorAchievs',
     },
   },
-  ACHIEVEMENT_MOUNT_MASTER: {
+  ACHIEVEMENT_MOUNT_COLOR: {
     achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('mountAchievement')}`,
+    label: $t => `${$t('achievement')}: ${$t('achievementMountColor')}`,
     modalId: 'generic-achievement',
     data: {
-      message: $t => $t('achievement'),
-      modalText: $t => $t('mountAchievement'),
-      achievement: 'mountMaster',
+      achievement: 'mountColorAchievs',
     },
   },
-  ACHIEVEMENT_TRIAD_BINGO: {
+  ACHIEVEMENT_PET_SET_COMPLETE: {
     achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('triadBingoAchievement')}`,
+    label: $t => `${$t('achievement')}: ${$t('achievementPetSetComplete')}`,
     modalId: 'generic-achievement',
     data: {
-      message: $t => $t('achievement'),
-      modalText: $t => $t('triadBingoAchievement'),
-      achievement: 'triadBingo',
-    },
-  },
-  ACHIEVEMENT_MONSTER_MAGUS: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementMonsterMagus')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'monsterMagus',
-    },
-  },
-  ACHIEVEMENT_UNDEAD_UNDERTAKER: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementUndeadUndertaker')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'undeadUndertaker',
-    },
-  },
-  ACHIEVEMENT: { // data filled in handleUserNotifications
-    achievement: true,
-    modalId: 'generic-achievement',
-    label: null, // data filled in handleUserNotifications
-    data: {
-      message: $t => $t('achievement'),
-      modalText: null, // data filled in handleUserNotifications
-    },
-  },
-  ACHIEVEMENT_PRIMED_FOR_PAINTING: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementPrimedForPainting')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'primedForPainting',
-    },
-  },
-  ACHIEVEMENT_PEARLY_PRO: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementPearlyPro')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'pearlyPro',
-    },
-  },
-  ACHIEVEMENT_TICKLED_PINK: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementTickledPink')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'tickledPink',
-    },
-  },
-  ACHIEVEMENT_ROSY_OUTLOOK: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementRosyOutlook')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'rosyOutlook',
-    },
-  },
-  ACHIEVEMENT_BUG_BONANZA: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementBugBonanza')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'bugBonanza',
-    },
-  },
-  ACHIEVEMENT_BARE_NECESSITIES: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementBareNecessities')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'bareNecessities',
-    },
-  },
-  ACHIEVEMENT_FRESHWATER_FRIENDS: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementFreshwaterFriends')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'freshwaterFriends',
-    },
-  },
-  ACHIEVEMENT_GOOD_AS_GOLD: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementGoodAsGold')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'goodAsGold',
-    },
-  },
-  ACHIEVEMENT_ALL_THAT_GLITTERS: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementAllThatGlitters')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'allThatGlitters',
-    },
-  },
-  ACHIEVEMENT_BONE_COLLECTOR: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementBoneCollector')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'boneCollector',
-    },
-  },
-  ACHIEVEMENT_SKELETON_CREW: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementSkeletonCrew')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'skeletonCrew',
-    },
-  },
-  ACHIEVEMENT_SEEING_RED: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementSeeingRed')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'seeingRed',
-    },
-  },
-  ACHIEVEMENT_RED_LETTER_DAY: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementRedLetterDay')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'redLetterDay',
-    },
-  },
-  ACHIEVEMENT_LEGENDARY_BESTIARY: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementLegendaryBestiary')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'legendaryBestiary',
-    },
-  },
-  ACHIEVEMENT_SEASONAL_SPECIALIST: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementSeasonalSpecialist')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'seasonalSpecialist',
-    },
-  },
-  ACHIEVEMENT_VIOLETS_ARE_BLUE: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementVioletsAreBlue')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'violetsAreBlue',
-    },
-  },
-  ACHIEVEMENT_WILD_BLUE_YONDER: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementWildBlueYonder')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'wildBlueYonder',
-    },
-  },
-  ACHIEVEMENT_DOMESTICATED: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementDomesticated')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'domesticated',
-    },
-  },
-  ACHIEVEMENT_SHADY_CUSTOMER: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementShadyCustomer')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'shadyCustomer',
-    },
-  },
-  ACHIEVEMENT_SHADE_OF_IT_ALL: {
-    achievement: true,
-    label: $t => `${$t('achievement')}: ${$t('achievementShadeOfItAll')}`,
-    modalId: 'generic-achievement',
-    data: {
-      achievement: 'shadeOfItAll',
+      achievement: 'petSetCompleteAchievs',
     },
   },
 };
@@ -448,8 +228,6 @@ export default {
   components: {
     yesterdailyModal,
     wonChallenge,
-    ultimateGear,
-    streak,
     rebirth,
     joinedGuild,
     joinedChallenge,
@@ -462,18 +240,14 @@ export default {
     armoireEmpty,
     questCompleted,
     questInvitation,
-    testing,
-    testingletiant,
     rebirthEnabled,
     contributor,
     loginIncentives,
     verifyUsername,
     genericAchievement,
-    lostMasterclasser,
-    mindOverMatter,
-    justAddWater,
     onboardingComplete,
     firstDrops,
+    groupPlansUpdate,
   },
   mixins: [notifications, guide],
   data () {
@@ -492,20 +266,28 @@ export default {
     const handledNotifications = {};
 
     [
-      'GUILD_PROMPT', 'REBIRTH_ENABLED', 'WON_CHALLENGE', 'STREAK_ACHIEVEMENT',
-      'ULTIMATE_GEAR_ACHIEVEMENT', 'REBIRTH_ACHIEVEMENT', 'GUILD_JOINED_ACHIEVEMENT',
-      'CHALLENGE_JOINED_ACHIEVEMENT', 'INVITED_FRIEND_ACHIEVEMENT', 'NEW_CONTRIBUTOR_LEVEL',
-      'CRON', 'LOGIN_INCENTIVE', 'ACHIEVEMENT_ALL_YOUR_BASE', 'ACHIEVEMENT_BACK_TO_BASICS',
-      'GENERIC_ACHIEVEMENT', 'ACHIEVEMENT_PARTY_UP', 'ACHIEVEMENT_PARTY_ON', 'ACHIEVEMENT_BEAST_MASTER',
-      'ACHIEVEMENT_MOUNT_MASTER', 'ACHIEVEMENT_TRIAD_BINGO', 'ACHIEVEMENT_DUST_DEVIL', 'ACHIEVEMENT_ARID_AUTHORITY',
-      'ACHIEVEMENT_MONSTER_MAGUS', 'ACHIEVEMENT_UNDEAD_UNDERTAKER', 'ACHIEVEMENT_PRIMED_FOR_PAINTING',
-      'ACHIEVEMENT_PEARLY_PRO', 'ACHIEVEMENT_TICKLED_PINK', 'ACHIEVEMENT_ROSY_OUTLOOK', 'ACHIEVEMENT',
-      'ONBOARDING_COMPLETE', 'FIRST_DROPS', 'ACHIEVEMENT_BUG_BONANZA', 'ACHIEVEMENT_BARE_NECESSITIES',
-      'ACHIEVEMENT_FRESHWATER_FRIENDS', 'ACHIEVEMENT_GOOD_AS_GOLD', 'ACHIEVEMENT_ALL_THAT_GLITTERS',
-      'ACHIEVEMENT_BONE_COLLECTOR', 'ACHIEVEMENT_SKELETON_CREW', 'ACHIEVEMENT_SEEING_RED',
-      'ACHIEVEMENT_RED_LETTER_DAY', 'ACHIEVEMENT_LEGENDARY_BESTIARY', 'ACHIEVEMENT_SEASONAL_SPECIALIST',
-      'ACHIEVEMENT_VIOLETS_ARE_BLUE', 'ACHIEVEMENT_WILD_BLUE_YONDER', 'ACHIEVEMENT_DOMESTICATED',
-      'ACHIEVEMENT_SHADY_CUSTOMER', 'ACHIEVEMENT_SHADE_OF_IT_ALL',
+      // general notifications
+      'CRON',
+      'FIRST_DROPS',
+      'LOGIN_INCENTIVE',
+      'NEW_CONTRIBUTOR_LEVEL',
+      'ONBOARDING_COMPLETE',
+      'REBIRTH_ENABLED',
+      'WON_CHALLENGE',
+      // achievement notifications
+      'ACHIEVEMENT',
+      'CHALLENGE_JOINED_ACHIEVEMENT',
+      'GUILD_JOINED_ACHIEVEMENT',
+      'INVITED_FRIEND_ACHIEVEMENT',
+      'ACHIEVEMENT_PARTY_ON',
+      'ACHIEVEMENT_PARTY_UP',
+      'REBIRTH_ACHIEVEMENT',
+      'STREAK_ACHIEVEMENT',
+      'ACHIEVEMENT_STABLE',
+      'ACHIEVEMENT_ANIMAL_SET',
+      'ACHIEVEMENT_PET_COLOR',
+      'ACHIEVEMENT_MOUNT_COLOR',
+      'ACHIEVEMENT_PET_SET_COMPLETE',
     ].forEach(type => {
       handledNotifications[type] = true;
     });
@@ -519,6 +301,9 @@ export default {
       alreadyReadNotification,
       nextCron: null,
       handledNotifications,
+      isInitialLoadComplete: false,
+      pendingRebirthNotification: null,
+      lastShownStreakCount: null, // Track last shown streak to prevent duplicates
     };
   },
   computed: {
@@ -530,7 +315,6 @@ export default {
       userMp: 'user.data.stats.mp',
       userNotifications: 'user.data.notifications',
       userAchievements: 'user.data.achievements', // @TODO: does this watch deeply?
-      armoireEmpty: 'user.data.flags.armoireEmpty',
       questCompleted: 'user.data.party.quest.completed',
     }),
     userClassSelect () {
@@ -601,10 +385,6 @@ export default {
       if (this.user.needsCron) return;
       this.handleUserNotifications(after);
     },
-    armoireEmpty (after, before) {
-      if (after === before || after === false) return;
-      this.$root.$emit('bv::show::modal', 'armoire-empty');
-    },
     questCompleted () {
       if (!this.questCompleted) return;
       this.$root.$emit('bv::show::modal', 'quest-completed');
@@ -648,6 +428,18 @@ export default {
       if (!this.user.flags.verifiedUsername) return this.$root.$emit('bv::show::modal', 'verify-username');
 
       return this.runYesterDailies();
+    },
+    async showPendingRebirthModal () {
+      if (this.pendingRebirthNotification) {
+        this.playSound('Achievement_Unlocked');
+        this.$root.$emit('bv::show::modal', 'rebirth');
+
+        await axios.post('/api/v4/notifications/read', {
+          notificationIds: [this.pendingRebirthNotification.id],
+        });
+
+        this.pendingRebirthNotification = null;
+      }
     },
     showDeathModal () {
       this.playSound('Death');
@@ -725,7 +517,7 @@ export default {
 
       // List of prompts for user on changes.
       // Sounds like we may need a refactor here, but it is clean for now
-      if (!this.user.flags.welcomed) {
+      if (!this.user.flags.welcomed && !this.$route?.name.includes('groupPlan')) {
         if (this.$store.state.avatarEditorOptions) {
           this.$store.state.avatarEditorOptions.editingUser = false;
         }
@@ -808,7 +600,7 @@ export default {
       const yesterUtcOffset = yesterDay.utcOffset();
 
       dailys.forEach(task => {
-        if (task && task.group.approval && task.group.approval.requested) return;
+        if (task.group && task.group.id) return;
         if (task.completed) return;
         const due = shouldDo(yesterDay, task, { timezoneUtcOffset: yesterUtcOffset });
         if (task.yesterDaily && due) this.yesterDailies.push(task);
@@ -824,11 +616,12 @@ export default {
     },
     async runCronAction () {
       // Run Cron
-      await axios.post('/api/v4/cron');
-
-      // Reset daily analytics actions
-      setLocalSetting(CONSTANTS.keyConstants.TASKS_SCORED_COUNT, 0);
-      setLocalSetting(CONSTANTS.keyConstants.TASKS_CREATED_COUNT, 0);
+      const response = await axios.post('/api/v4/cron');
+      if (response.status === 200) {
+        // Reset daily analytics actions
+        setLocalSetting(CONSTANTS.keyConstants.TASKS_SCORED_COUNT, 0);
+        setLocalSetting(CONSTANTS.keyConstants.TASKS_CREATED_COUNT, 0);
+      }
 
       // Sync
       await Promise.all([
@@ -847,6 +640,18 @@ export default {
         this.showLevelUpNotifications(this.user.stats.lvl);
       }
       this.handleUserNotifications(this.user.notifications);
+
+      this.isInitialLoadComplete = true;
+
+      const hasRebirthConfirmationFlag = localStorage.getItem('show-rebirth-confirmation') === 'true';
+
+      if (hasRebirthConfirmationFlag) {
+        localStorage.removeItem('show-rebirth-confirmation');
+        this.playSound('Achievement_Unlocked');
+        this.$root.$emit('bv::show::modal', 'rebirth');
+      } else {
+        this.showPendingRebirthModal();
+      }
     },
     async handleUserNotifications (after) {
       if (this.$store.state.isRunningYesterdailies) return;
@@ -879,85 +684,61 @@ export default {
               this.$root.$emit('bv::show::modal', 'first-drops');
             }
             break;
-          case 'GUILD_PROMPT':
-            // @TODO: I'm pretty sure we can find better names for these
-            if (notification.data.textletiant === -1) {
-              this.$root.$emit('bv::show::modal', 'testing');
-            } else {
-              this.$root.$emit('bv::show::modal', 'testingletiant');
-            }
-            break;
           case 'REBIRTH_ENABLED':
             this.$root.$emit('bv::show::modal', 'rebirth-enabled');
             break;
           case 'WON_CHALLENGE':
             this.$root.$emit('habitica:won-challenge', notification);
             break;
-          case 'STREAK_ACHIEVEMENT':
-            this.text(`${this.$t('streaks')}: ${this.user.achievements.streak}`, () => {
-              this.$root.$emit('bv::show::modal', 'streak');
-            }, this.user.preferences.suppressModals.streak);
-            this.playSound('Achievement_Unlocked');
-            break;
           case 'REBIRTH_ACHIEVEMENT':
-            this.playSound('Achievement_Unlocked');
-            this.$root.$emit('bv::show::modal', 'rebirth');
+            if (localStorage.getItem('show-rebirth-confirmation') !== 'true') {
+              if (!this.isInitialLoadComplete) {
+                this.pendingRebirthNotification = notification;
+                markAsRead = false;
+              } else {
+                this.playSound('Achievement_Unlocked');
+                this.$root.$emit('bv::show::modal', 'rebirth');
+              }
+            }
             break;
-          case 'ULTIMATE_GEAR_ACHIEVEMENT':
-          case 'GUILD_JOINED_ACHIEVEMENT':
-          case 'CHALLENGE_JOINED_ACHIEVEMENT':
-          case 'INVITED_FRIEND_ACHIEVEMENT':
           case 'NEW_CONTRIBUTOR_LEVEL':
-          case 'ACHIEVEMENT_ALL_YOUR_BASE':
-          case 'ACHIEVEMENT_BACK_TO_BASICS':
-          case 'ACHIEVEMENT_DUST_DEVIL':
-          case 'ACHIEVEMENT_ARID_AUTHORITY':
-          case 'ACHIEVEMENT_PARTY_UP':
+          case 'CHALLENGE_JOINED_ACHIEVEMENT':
+          case 'GUILD_JOINED_ACHIEVEMENT':
+          case 'INVITED_FRIEND_ACHIEVEMENT':
           case 'ACHIEVEMENT_PARTY_ON':
-          case 'ACHIEVEMENT_BEAST_MASTER':
-          case 'ACHIEVEMENT_MOUNT_MASTER':
-          case 'ACHIEVEMENT_TRIAD_BINGO':
-          case 'ACHIEVEMENT_MONSTER_MAGUS':
-          case 'ACHIEVEMENT_UNDEAD_UNDERTAKER':
-          case 'ACHIEVEMENT_PRIMED_FOR_PAINTING':
-          case 'ACHIEVEMENT_PEARLY_PRO':
-          case 'ACHIEVEMENT_TICKLED_PINK':
-          case 'ACHIEVEMENT_ROSY_OUTLOOK':
-          case 'ACHIEVEMENT_BUG_BONANZA':
-          case 'ACHIEVEMENT_BARE_NECESSITIES':
-          case 'ACHIEVEMENT_FRESHWATER_FRIENDS':
-          case 'ACHIEVEMENT_GOOD_AS_GOLD':
-          case 'ACHIEVEMENT_ALL_THAT_GLITTERS':
-          case 'ACHIEVEMENT_BONE_COLLECTOR':
-          case 'ACHIEVEMENT_SKELETON_CREW':
-          case 'ACHIEVEMENT_SEEING_RED':
-          case 'ACHIEVEMENT_RED_LETTER_DAY':
-          case 'ACHIEVEMENT_LEGENDARY_BESTIARY':
-          case 'ACHIEVEMENT_SEASONAL_SPECIALIST':
-          case 'ACHIEVEMENT_VIOLETS_ARE_BLUE':
-          case 'ACHIEVEMENT_WILD_BLUE_YONDER':
-          case 'ACHIEVEMENT_DOMESTICATED':
-          case 'ACHIEVEMENT_SHADY_CUSTOMER':
-          case 'ACHIEVEMENT_SHADE_OF_IT_ALL':
-          case 'GENERIC_ACHIEVEMENT':
+          case 'ACHIEVEMENT_PARTY_UP':
             this.showNotificationWithModal(notification);
             break;
           case 'ACHIEVEMENT': { // generic achievement
-            const { achievement } = notification.data;
-            const upperCaseAchievement = achievement.charAt(0).toUpperCase() + achievement.slice(1);
-            const achievementTitleKey = `achievement${upperCaseAchievement}`;
-            NOTIFICATIONS.ACHIEVEMENT.label = $t => `${$t('achievement')}: ${$t(achievementTitleKey)}`;
-            NOTIFICATIONS.ACHIEVEMENT.data.modalText = $t => $t(achievementTitleKey);
+            const {
+              achievement,
+              count,
+              message,
+              modalText,
+            } = notification.data;
+            if (achievement === 'streak') {
+              // Client-side deduplication: prevent showing duplicate streak achievements
+              if (this.lastShownStreakCount === this.user.achievements.streak) {
+                // Same streak already shown, skip this notification
+                break;
+              }
+              this.lastShownStreakCount = this.user.achievements.streak;
+            }
+            NOTIFICATIONS.ACHIEVEMENT.label = $t => `${$t('achievement')}: ${message}`;
+            NOTIFICATIONS.ACHIEVEMENT.data.modalText = modalText;
             this.showNotificationWithModal(notification);
 
             // Set the achievement as it's not defined in the user schema
-            Vue.set(this.user.achievements, achievement, true);
+            if (achievement === 'ultimateGearSets') {
+              const { klass } = notification.data;
+              Vue.set(this.user.achievements.ultimateGearSets, klass, true);
+            } else if (count) {
+              Vue.set(this.user.achievements, achievement, count);
+            } else {
+              Vue.set(this.user.achievements, achievement, true);
+            }
             break;
           }
-          case 'CRON':
-            // Not needed because it's shown already by the userHp and userMp watchers
-            // Keeping an empty block so that it gets read
-            break;
           case 'LOGIN_INCENTIVE':
             if (this.user.flags.tour.intro === this.TOUR_END && this.user.flags.welcomed) {
               this.notificationData = notification.data;

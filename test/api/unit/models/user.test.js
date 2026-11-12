@@ -1,8 +1,12 @@
 import moment from 'moment';
+import requireAgain from 'require-again';
 import { model as User } from '../../../../website/server/models/user';
 import { model as NewsPost } from '../../../../website/server/models/newsPost';
 import { model as Group } from '../../../../website/server/models/group';
+import { model as Blocker } from '../../../../website/server/models/blocker';
 import common from '../../../../website/common';
+
+const pathToUserSchema = '../../../../website/server/models/user/schema';
 
 describe('User Model', () => {
   describe('.toJSON()', () => {
@@ -102,6 +106,9 @@ describe('User Model', () => {
       expect(userToJSON.notifications[0].type).to.equal('ACHIEVEMENT');
       expect(userToJSON.notifications[0].data).to.eql({
         achievement: 'createdTask',
+        icon: 'achievement-createdTask',
+        message: common.i18n.t('achievementCreatedTask'),
+        modalText: common.i18n.t('achievementCreatedTaskNotifText'),
       });
       expect(userToJSON.notifications[0].seen).to.eql(false);
 
@@ -188,7 +195,7 @@ describe('User Model', () => {
     it('removes invalid tags when loading the user', async () => {
       let user = new User();
       await user.save();
-      await user.update({
+      await user.updateOne({
         $set: {
           tags: [
             null, // invalid, not an object
@@ -212,7 +219,7 @@ describe('User Model', () => {
     it('removes invalid push devices when loading the user', async () => {
       let user = new User();
       await user.save();
-      await user.update({
+      await user.updateOne({
         $set: {
           pushDevices: [
             null, // invalid, not an object
@@ -236,7 +243,7 @@ describe('User Model', () => {
     it('removes duplicate push devices when loading the user', async () => {
       let user = new User();
       await user.save();
-      await user.update({
+      await user.updateOne({
         $set: {
           pushDevices: [
             { type: 'android', regId: '1234' },
@@ -258,7 +265,7 @@ describe('User Model', () => {
     it('removes invalid notifications when loading the user', async () => {
       let user = new User();
       await user.save();
-      await user.update({
+      await user.updateOne({
         $set: {
           notifications: [
             null, // invalid, not an object
@@ -284,7 +291,7 @@ describe('User Model', () => {
     it('removes multiple NEW_CHAT_MESSAGE for the same group', async () => {
       let user = new User();
       await user.save();
-      await user.update({
+      await user.updateOne({
         $set: {
           notifications: [
             {
@@ -634,7 +641,7 @@ describe('User Model', () => {
       user = await user.save();
       // verify that it's been awarded
       expect(user.achievements.beastMaster).to.equal(true);
-      expect(user.notifications.find(notification => notification.type === 'ACHIEVEMENT_BEAST_MASTER')).to.exist;
+      expect(user.notifications.find(notification => notification.type === 'ACHIEVEMENT')).to.exist;
 
       // reset the user
       user.achievements.beastMasterCount = 0;
@@ -683,9 +690,9 @@ describe('User Model', () => {
 
       user = await user.save();
       // verify that it's been awarded
-      expect(user.notifications.find(notification => notification.type === 'ACHIEVEMENT_BEAST_MASTER')).to.exist;
-      expect(user.notifications.find(notification => notification.type === 'ACHIEVEMENT_MOUNT_MASTER')).to.exist;
-      expect(user.notifications.find(notification => notification.type === 'ACHIEVEMENT_TRIAD_BINGO')).to.exist;
+      expect(user.notifications.find(
+        notification => notification.type === 'ACHIEVEMENT',
+      )).to.exist;
     });
 
     context('manage unallocated stats points notifications', () => {
@@ -811,6 +818,16 @@ describe('User Model', () => {
       expect(daysMissed).to.eql(5);
     });
 
+    it('correctly handles a cron that did not complete', () => {
+      const now = moment();
+      user.lastCron = moment(now).subtract(2, 'days');
+      user.auth.timestamps.loggedIn = moment(now).subtract(5, 'days');
+
+      const { daysMissed } = user.daysUserHasMissed(now);
+
+      expect(daysMissed).to.eql(5);
+    });
+
     it('uses timezone from preferences to calculate days missed', () => {
       const now = moment('2017-07-08 01:00:00Z');
       user.lastCron = moment('2017-07-04 13:00:00Z');
@@ -867,7 +884,7 @@ describe('User Model', () => {
 
     expect(user.isNewsPoster()).to.equal(false);
 
-    user.contributor.newsPoster = true;
+    user.permissions = { news: true };
     expect(user.isNewsPoster()).to.equal(true);
   });
 
@@ -900,6 +917,75 @@ describe('User Model', () => {
       user.flags.lastNewStuffRead = '124';
       expect(user.checkNewStuff()).to.equal(true);
       expect(user.toJSON().flags.newStuff).to.equal(true);
+    });
+  });
+
+  describe('validates email', () => {
+    it('does not throw an error for a valid email', () => {
+      const user = new User();
+      user.auth.local.email = 'hello@example.com';
+      const errors = user.validateSync();
+      expect(errors.errors['auth.local.email']).to.not.exist;
+    });
+
+    it('throws an error if email is not valid', () => {
+      const user = new User();
+      user.auth.local.email = 'invalid-email';
+      const errors = user.validateSync();
+      expect(errors.errors['auth.local.email'].message).to.equal(common.i18n.t('invalidEmail'));
+    });
+
+    it('throws an error if email is using a restricted domain', () => {
+      const user = new User();
+      user.auth.local.email = 'scammer@habitica.com';
+      const errors = user.validateSync();
+      expect(errors.errors['auth.local.email'].message).to.equal(common.i18n.t('invalidEmailDomain', { domains: 'habitica.com, habitrpg.com' }));
+    });
+
+    it('throws an error if email was blocked specifically', () => {
+      sandbox.stub(Blocker, 'watchBlockers').returns({
+        on: (event, callback) => {
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: 'blocked@example.com' } });
+        },
+      });
+      const schema = requireAgain(pathToUserSchema).UserSchema;
+      const valid = schema.paths['auth.local.email'].options.validate.every(v => v.validator('blocked@example.com'));
+      expect(valid).to.equal(false);
+    });
+
+    it('throws an error if email domain was blocked', () => {
+      sandbox.stub(Blocker, 'watchBlockers').returns({
+        on: (event, callback) => {
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: '@example.com' } });
+        },
+      });
+      const schema = requireAgain(pathToUserSchema).UserSchema;
+      const valid = schema.paths['auth.local.email'].options.validate.every(v => v.validator('blocked@example.com'));
+      expect(valid).to.equal(false);
+    });
+
+    it('throws an error if user portion of email was blocked', () => {
+      sandbox.stub(Blocker, 'watchBlockers').returns({
+        on: (event, callback) => {
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: 'blocked@' } });
+        },
+      });
+      const schema = requireAgain(pathToUserSchema).UserSchema;
+      const valid = schema.paths['auth.local.email'].options.validate.every(v => v.validator('blocked@example.com'));
+      expect(valid).to.equal(false);
+    });
+
+    it('does not throw an error if email is not blocked', () => {
+      sandbox.stub(Blocker, 'watchBlockers').returns({
+        on: (event, callback) => {
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: '@example.com' } });
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: 'blocked@' } });
+          callback({ operation: 'add', blocker: { type: 'email', area: 'full', value: 'bad@test.com' } });
+        },
+      });
+      const schema = requireAgain(pathToUserSchema).UserSchema;
+      const valid = schema.paths['auth.local.email'].options.validate.every(v => v.validator('good@test.com'));
+      expect(valid).to.equal(true);
     });
   });
 });

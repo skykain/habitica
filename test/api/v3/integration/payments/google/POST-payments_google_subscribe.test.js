@@ -1,4 +1,4 @@
-import { generateUser, translate as t } from '../../../../../helpers/api-integration/v3';
+import { generateUser } from '../../../../../helpers/api-integration/v3';
 import googlePayments from '../../../../../../website/server/libs/payments/google';
 
 describe('payments : google #subscribe', () => {
@@ -7,14 +7,6 @@ describe('payments : google #subscribe', () => {
 
   beforeEach(async () => {
     user = await generateUser();
-  });
-
-  it('verifies sub key', async () => {
-    await expect(user.post(endpoint)).to.eventually.be.rejected.and.eql({
-      code: 400,
-      error: 'BadRequest',
-      message: t('missingSubscriptionCode'),
-    });
   });
 
   describe('success', () => {
@@ -45,12 +37,9 @@ describe('payments : google #subscribe', () => {
       });
 
       expect(subscribeStub).to.be.calledOnce;
-      expect(subscribeStub.args[0][0]).to.eql(sku);
-      expect(subscribeStub.args[0][1]._id).to.eql(user._id);
-      expect(subscribeStub.args[0][2]).to.eql('receipt');
-      expect(subscribeStub.args[0][3]).to.eql('signature');
-      expect(subscribeStub.args[0][4]['x-api-key']).to.eql(user.apiToken);
-      expect(subscribeStub.args[0][4]['x-api-user']).to.eql(user._id);
+      expect(subscribeStub.args[0][0]._id).to.eql(user._id);
+      expect(subscribeStub.args[0][1]).to.eql('receipt');
+      expect(subscribeStub.args[0][2]).to.eql('signature');
     });
   });
 });

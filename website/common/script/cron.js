@@ -250,3 +250,52 @@ export function shouldDo (day, dailyTask, options = {}) {
   }
   return false;
 }
+
+export function getPlanMonths (plan) {
+  // NB gift subscriptions don't have a planID
+  // (which doesn't matter because we don't need to reapply perks
+  // for them and by this point they should have expired anyway)
+  if (!plan.planId) return 1;
+  const planIdRegExp = /_([0-9]+)mo/; // e.g., matches 'google_6mo' / 'basic_12mo' and captures '6' / '12'
+  const match = plan.planId.match(planIdRegExp);
+  if (match !== null && match[0] !== null) {
+    // 3 for 3-month recurring subscription, etc
+    return match[1]; // eslint-disable-line prefer-destructuring
+  }
+
+  return 1;
+}
+
+/*
+ * This is a helper method to get all the needed informations of the plan
+ *
+ * currently used in cron and the "next hourglass in" feature
+ */
+export function getPlanContext (user, now) {
+  const { plan } = user.purchased;
+
+  defaults(plan.consecutive, {
+    count: 0, offset: 0, trinkets: 0, gemCapExtra: 0,
+  });
+
+  const nowMoment = moment(now);
+
+  const subscriptionEndDate = moment(plan.dateTerminated).isBefore()
+    ? moment(plan.dateTerminated).startOf('month')
+    : nowMoment.startOf('month');
+  const dateUpdatedMoment = moment(plan.dateUpdated).startOf('month');
+  const elapsedMonths = moment(subscriptionEndDate).diff(dateUpdatedMoment, 'months');
+
+  let nextHourglassDate = moment(nowMoment).add(1, 'month');
+  if (plan.dateTerminated && moment(plan.dateTerminated).isBefore(nextHourglassDate)) {
+    nextHourglassDate = null;
+  }
+
+  return {
+    plan,
+    subscriptionEndDate,
+    dateUpdatedMoment,
+    elapsedMonths,
+    nextHourglassDate,
+  };
+}

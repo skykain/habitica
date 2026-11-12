@@ -39,7 +39,7 @@
 </template>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .face-avatar {
     width: 36px;
@@ -112,7 +112,7 @@ export default {
     },
     visualBuffs () {
       return {
-        snowball: 'snowman',
+        snowball: `avatar_snowball_${this.member.stats.class}`,
         spookySparkles: 'ghost',
         shinySeed: `avatar_floral_${this.member.stats.class}`,
         seafoam: 'seafoam_star',

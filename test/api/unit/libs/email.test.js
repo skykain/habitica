@@ -1,9 +1,9 @@
 /* eslint-disable global-require */
-import got from 'got';
 import nconf from 'nconf';
 import requireAgain from 'require-again';
 import { TAVERN_ID } from '../../../../website/server/models/group';
 import { defer } from '../../../helpers/api-unit.helper';
+import worker from '../../../../website/server/libs/worker';
 
 function getUser () {
   return {
@@ -12,11 +12,6 @@ function getUser () {
       local: {
         username: 'username',
         email: 'email@email',
-      },
-      facebook: {
-        emails: [{
-          value: 'email@facebook',
-        }],
       },
       google: {
         emails: [{
@@ -62,30 +57,12 @@ describe('emails', () => {
       expect(data).to.have.property('canSend', true);
     });
 
-    it('returns correct user data [facebook users]', () => {
-      const attachEmail = requireAgain(pathToEmailLib);
-      const { getUserInfo } = attachEmail;
-      const user = getUser();
-      delete user.profile.name;
-      delete user.auth.local.email;
-      delete user.auth.google.emails;
-      delete user.auth.apple.emails;
-
-      const data = getUserInfo(user, ['name', 'email', '_id', 'canSend']);
-
-      expect(data).to.have.property('name', user.auth.local.username);
-      expect(data).to.have.property('email', user.auth.facebook.emails[0].value);
-      expect(data).to.have.property('_id', user._id);
-      expect(data).to.have.property('canSend', true);
-    });
-
     it('returns correct user data [google users]', () => {
       const attachEmail = requireAgain(pathToEmailLib);
       const { getUserInfo } = attachEmail;
       const user = getUser();
       delete user.profile.name;
       delete user.auth.local.email;
-      delete user.auth.facebook.emails;
       delete user.auth.apple.emails;
 
       const data = getUserInfo(user, ['name', 'email', '_id', 'canSend']);
@@ -103,7 +80,6 @@ describe('emails', () => {
       delete user.profile.name;
       delete user.auth.local.email;
       delete user.auth.google.emails;
-      delete user.auth.facebook.emails;
 
       const data = getUserInfo(user, ['name', 'email', '_id', 'canSend']);
 
@@ -118,7 +94,6 @@ describe('emails', () => {
       const { getUserInfo } = attachEmail;
       const user = getUser();
       delete user.auth.local.email;
-      delete user.auth.facebook;
       delete user.auth.google;
       delete user.auth.apple;
 
@@ -148,9 +123,18 @@ describe('emails', () => {
     });
   });
 
-  describe('sendTxnEmail', () => {
+  describe('sendTxn', () => {
+    let sendTxn = null;
+
     beforeEach(() => {
-      sandbox.stub(got, 'post').returns(defer().promise);
+      sandbox.stub(worker, 'sendJob').returns(defer().promise);
+
+      const nconfGetStub = sandbox.stub(nconf, 'get');
+      nconfGetStub.withArgs('IS_PROD').returns(true);
+      nconfGetStub.withArgs('BASE_URL').returns('BASE_URL');
+
+      const attachEmail = requireAgain(pathToEmailLib);
+      sendTxn = attachEmail.sendTxn;
     });
 
     afterEach(() => {
@@ -158,78 +142,123 @@ describe('emails', () => {
     });
 
     it('can send a txn email to one recipient', () => {
-      sandbox.stub(nconf, 'get').withArgs('IS_PROD').returns(true);
-      const attachEmail = requireAgain(pathToEmailLib);
-      const sendTxnEmail = attachEmail.sendTxn;
       const emailType = 'an email type';
       const mailingInfo = {
         name: 'my name',
         email: 'my@email',
       };
 
-      sendTxnEmail(mailingInfo, emailType);
-      expect(got.post).to.be.calledWith('undefined/job', sinon.match({
-        json: {
-          data: {
-            emailType: sinon.match.same(emailType),
-            to: sinon.match(value => Array.isArray(value) && value[0].name === mailingInfo.name, 'matches mailing info array'),
-          },
+      sendTxn(mailingInfo, emailType);
+      expect(worker.sendJob).to.be.called;
+      expect(worker.sendJob).to.be.calledWith('email', sinon.match({
+        identifier: emailType,
+        data: {
+          emailType: sinon.match.same(emailType),
+          to: sinon.match(value => Array.isArray(value) && value[0].name === mailingInfo.name, 'matches mailing info array'),
         },
       }));
     });
 
     it('does not send email if address is missing', () => {
-      sandbox.stub(nconf, 'get').withArgs('IS_PROD').returns(true);
-      const attachEmail = requireAgain(pathToEmailLib);
-      const sendTxnEmail = attachEmail.sendTxn;
       const emailType = 'an email type';
       const mailingInfo = {
         name: 'my name',
         // email: 'my@email',
       };
 
-      sendTxnEmail(mailingInfo, emailType);
-      expect(got.post).not.to.be.called;
+      sendTxn(mailingInfo, emailType);
+      expect(worker.sendJob).not.to.be.called;
     });
 
-    it('uses getUserInfo in case of user data', () => {
-      sandbox.stub(nconf, 'get').withArgs('IS_PROD').returns(true);
-      const attachEmail = requireAgain(pathToEmailLib);
-      const sendTxnEmail = attachEmail.sendTxn;
+    it('throws error when mail target is only a string', async () => {
       const emailType = 'an email type';
-      const mailingInfo = getUser();
+      const mailingInfo = 'my email';
 
-      sendTxnEmail(mailingInfo, emailType);
-      expect(got.post).to.be.calledWith('undefined/job', sinon.match({
-        json: {
-          data: {
-            emailType: sinon.match.same(emailType),
-            to: sinon.match(val => val[0]._id === mailingInfo._id),
-          },
-        },
-      }));
+      await expect(sendTxn(mailingInfo, emailType)).to.be.rejectedWith('Argument Error mailingInfoArray: does not contain email or _id');
     });
 
-    it('sends email with some default variables', () => {
-      sandbox.stub(nconf, 'get').withArgs('IS_PROD').returns(true);
-      const attachEmail = requireAgain(pathToEmailLib);
-      const sendTxnEmail = attachEmail.sendTxn;
+    it('throws error when mail target has no _id or email', async () => {
+      const emailType = 'an email type';
+      const mailingInfo = {
+
+      };
+
+      await expect(sendTxn(mailingInfo, emailType)).to.be.rejectedWith('Argument Error mailingInfoArray: does not contain email or _id');
+    });
+
+    it('throws error when variables not an array', async () => {
       const emailType = 'an email type';
       const mailingInfo = {
         name: 'my name',
         email: 'my@email',
       };
-      const variables = [1, 2, 3];
+      const variables = {};
 
-      sendTxnEmail(mailingInfo, emailType, variables);
-      expect(got.post).to.be.calledWith('undefined/job', sinon.match({
-        json: {
-          data: {
-            variables: sinon.match(value => value[0].name === 'BASE_URL', 'matches variables'),
-            personalVariables: sinon.match(value => value[0].rcpt === mailingInfo.email
-                && value[0].vars[0].name === 'RECIPIENT_NAME'
+      await expect(sendTxn(mailingInfo, emailType, variables)).to.be.rejectedWith('Argument Error variables: is not an array');
+    });
+
+    it('throws error when variables array not contain name/content', async () => {
+      const emailType = 'an email type';
+      const mailingInfo = {
+        name: 'my name',
+        email: 'my@email',
+      };
+      const variables = [
+        {
+
+        },
+      ];
+
+      await expect(sendTxn(mailingInfo, emailType, variables)).to.be.rejectedWith('Argument Error variables: does not contain name or content');
+    });
+
+    it('throws no error when variables array contain name but no content', () => {
+      const emailType = 'an email type';
+      const mailingInfo = {
+        name: 'my name',
+        email: 'my@email',
+      };
+      const variables = [
+        {
+          name: 'MY_VAR',
+        },
+      ];
+
+      expect(sendTxn(mailingInfo, emailType, variables)).to.not.throw;
+    });
+
+    it('uses getUserInfo in case of user data', () => {
+      const emailType = 'an email type';
+      const mailingInfo = getUser();
+
+      sendTxn(mailingInfo, emailType);
+      expect(worker.sendJob).to.be.called;
+      expect(worker.sendJob).to.be.calledWith('email', sinon.match({
+        identifier: emailType,
+        data: {
+          emailType: sinon.match.same(emailType),
+          to: sinon.match(val => val[0]._id === mailingInfo._id),
+        },
+      }));
+    });
+
+    it('sends email with some default variables', () => {
+      const emailType = 'an email type';
+      const mailingInfo = {
+        name: 'my name',
+        email: 'my@email',
+      };
+      const variables = [];
+
+      sendTxn(mailingInfo, emailType, variables);
+      expect(worker.sendJob).to.be.called;
+      expect(worker.sendJob).to.be.calledWith('email', sinon.match({
+        identifier: emailType,
+        data: {
+          variables: sinon.match(value => value[0].name === 'BASE_URL', 'matches variables'),
+          personalVariables: sinon.match(value => value[0].rcpt === mailingInfo.email
+              && value[0].vars[0].name === 'RECIPIENT_NAME'
                 && value[0].vars[1].name === 'RECIPIENT_UNSUB_URL', 'matches personal variables'),
-          },
         },
       }));
     });

@@ -4,7 +4,7 @@ import {
   createAndPopulateGroup,
   generateChallenge,
   translate as t,
-  sleep,
+  waitFor,
 } from '../../../../helpers/api-integration/v3';
 
 describe('GET /challenges/:challengeId/export/csv', () => {
@@ -33,7 +33,13 @@ describe('GET /challenges/:challengeId/export/csv', () => {
       { type: 'habit', text: 'Task 1' },
       { type: 'todo', text: 'Task 2' },
     ]);
-    await sleep(0.5); // Make sure tasks are synced to the users
+    // Make sure tasks are synced to the users
+    await waitFor(async () => {
+      const usersTasks = await Promise.all([groupLeader, ...members].map(member => member.get('/tasks/user')));
+      usersTasks.forEach(tasks => {
+        expect(tasks.filter(task => task.challenge.id === challenge._id)).to.have.lengthOf(2);
+      });
+    });
     await members[0].sync();
     await members[1].sync();
     await members[2].sync();
@@ -74,7 +80,7 @@ describe('GET /challenges/:challengeId/export/csv', () => {
   });
 
   it('should successfully return when it contains erroneous residue user data', async () => {
-    await members[0].update({ challenges: [] });
+    await members[0].updateOne({ challenges: [] });
     const res = await members[1].get(`/challenges/${challenge._id}/export/csv`);
     const sortedMembers = _.sortBy([members[1], members[2], groupLeader], '_id');
     const splitRes = res.split('\n');

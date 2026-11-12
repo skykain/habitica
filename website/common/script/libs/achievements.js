@@ -1,6 +1,10 @@
 import get from 'lodash/get';
+import moment from 'moment';
 import content from '../content/index';
 import i18n from '../i18n';
+import { isReleased } from '../content/is_released';
+import { ACHIEVEMENT_RELEASE_DATES } from '../content/constants/releaseDates';
+import { QUEST_ACHIEVEMENT_THRESHOLDS as thresholds } from '../content/constants';
 
 const achievs = {};
 const achievsContent = content.achievements;
@@ -35,15 +39,18 @@ function contribText (contrib, backer, language) {
 }
 
 function _add (result, data) {
-  result[data.key] = {
-    title: data.title,
-    text: data.text,
-    icon: data.icon,
-    earned: data.earned,
-    value: data.value,
-    index: index += 1,
-    optionalCount: data.optionalCount,
-  };
+  const thisContent = achievsContent[data.key];
+  if (!thisContent || !thisContent.release || moment().isAfter(thisContent.release)) {
+    result[data.key] = {
+      title: data.title,
+      text: data.text,
+      icon: data.icon,
+      earned: data.earned,
+      value: data.value,
+      index: index += 1,
+      optionalCount: data.optionalCount,
+    };
+  }
 }
 
 function _addSimpleWithCustomPath (result, user, data) {
@@ -174,6 +181,66 @@ function _addUltimateGear (result, user, data) {
   });
 }
 
+function _addRebirth (result, user, data) {
+  let rebirthTitle;
+  let rebirthText;
+
+  if (user.achievements.rebirths > 1) {
+    rebirthTitle = i18n.t('rebirthText', { rebirths: user.achievements.rebirths }, data.language);
+  } else {
+    rebirthTitle = i18n.t('rebirthBegan', data.language);
+  }
+
+  if (!user.achievements.rebirthLevel) {
+    rebirthText = i18n.t('rebirthOrbNoLevel', data.language);
+  } else if (user.achievements.rebirthLevel < 100) {
+    rebirthText = i18n.t('rebirthOrb', { level: user.achievements.rebirthLevel }, data.language);
+  } else {
+    rebirthText = i18n.t('rebirthOrb100', data.language);
+  }
+
+  _add(result, {
+    key: 'rebirth',
+    title: rebirthTitle,
+    text: rebirthText,
+    icon: 'achievement-sun',
+    earned: Boolean(user.achievements.rebirths),
+    optionalCount: user.achievements.rebirths,
+  });
+}
+
+function questCount (user, data) {
+  let count = 0;
+  const progress = user.achievements.questCount || 0;
+  let questText = i18n.t(
+    'achievementQuestCountMultipleText',
+    { count, progress, target: 1 },
+  );
+  const maxQuestCount = Math.max(...thresholds);
+  if (progress >= maxQuestCount) {
+    count = maxQuestCount;
+    questText = i18n.t('achievementQuestCountMaximumText', { count: maxQuestCount }, data.language);
+  } else if (progress >= 1 && progress < thresholds[1]) {
+    count = 1;
+    questText = i18n.t('achievementQuestCountSingleText', { progress, target: thresholds[1] }, data.language);
+  } else if (user.achievements.questCount) {
+    const thresholdAchieved = thresholds.findIndex((target, i) => target !== 1 && progress >= target && progress < thresholds[i + 1]); // eslint-disable-line max-len
+    count = thresholds[thresholdAchieved];
+    questText = i18n.t(
+      'achievementQuestCountMultipleText',
+      { count, progress, target: thresholds[thresholdAchieved + 1] },
+    );
+  }
+
+  return {
+    key: 'questCount',
+    title: i18n.t(`achievementQuestCount${count}`, data.language),
+    text: questText,
+    icon: `achievement-completed-${count}-quest`,
+    earned: Boolean(progress),
+  };
+}
+
 function _getBasicAchievements (user, language) {
   const result = {};
 
@@ -182,10 +249,12 @@ function _getBasicAchievements (user, language) {
 
   _addSimple(result, user, { path: 'partyUp', language });
   _addSimple(result, user, { path: 'partyOn', language });
-  _addSimple(result, user, { path: 'joinedGuild', language });
   _addSimple(result, user, { path: 'royallyLoyal', language });
   _addSimple(result, user, { path: 'joinedChallenge', language });
   _addSimple(result, user, { path: 'invitedFriend', language });
+  if (isReleased({ name: 'questCount' }, 'name', ACHIEVEMENT_RELEASE_DATES)) {
+    _add(result, questCount(user, { language }));
+  }
   _addSimple(result, user, { path: 'lostMasterclasser', language });
   _addSimple(result, user, { path: 'mindOverMatter', language });
   _addSimple(result, user, { path: 'justAddWater', language });
@@ -215,6 +284,19 @@ function _getBasicAchievements (user, language) {
   _addSimple(result, user, { path: 'domesticated', language });
   _addSimple(result, user, { path: 'shadyCustomer', language });
   _addSimple(result, user, { path: 'shadeOfItAll', language });
+  _addSimple(result, user, { path: 'zodiacZookeeper', language });
+  _addSimple(result, user, { path: 'birdsOfAFeather', language });
+  _addSimple(result, user, { path: 'reptacularRumble', language });
+  _addSimple(result, user, { path: 'woodlandWizard', language });
+  _addSimple(result, user, { path: 'boneToPick', language });
+  _addSimple(result, user, { path: 'polarPro', language });
+  _addSimple(result, user, { path: 'plantParent', language });
+  _addSimple(result, user, { path: 'dinosaurDynasty', language });
+  _addSimple(result, user, { path: 'bonelessBoss', language });
+  _addSimple(result, user, { path: 'duneBuddy', language });
+  _addSimple(result, user, { path: 'roughRider', language });
+  _addSimple(result, user, { path: 'rodentRuler', language });
+  _addSimple(result, user, { path: 'cats', language });
 
   _addSimpleWithMasterCount(result, user, { path: 'beastMaster', language });
   _addSimpleWithMasterCount(result, user, { path: 'mountMaster', language });
@@ -230,31 +312,7 @@ function _getBasicAchievements (user, language) {
     _addSimpleWithCount(result, user, { path, key: `${path}Cards`, language });
   });
 
-  let rebirthTitle;
-  let rebirthText;
-
-  if (user.achievements.rebirths > 1) {
-    rebirthTitle = i18n.t('rebirthText', { rebirths: user.achievements.rebirths }, language);
-  } else {
-    rebirthTitle = i18n.t('rebirthBegan', language);
-  }
-
-  if (!user.achievements.rebirthLevel) {
-    rebirthText = i18n.t('rebirthOrbNoLevel', language);
-  } else if (user.achievements.rebirthLevel < 100) {
-    rebirthText = i18n.t('rebirthOrb', { level: user.achievements.rebirthLevel }, language);
-  } else {
-    rebirthText = i18n.t('rebirthOrb100', language);
-  }
-
-  _add(result, {
-    key: 'rebirth',
-    title: rebirthTitle,
-    text: rebirthText,
-    icon: 'achievement-sun',
-    earned: Boolean(user.achievements.rebirths),
-    optionalCount: user.achievements.rebirths,
-  });
+  _addRebirth(result, user, { language });
 
   return result;
 }
@@ -341,6 +399,14 @@ function _getSpecialAchievements (user, language) {
     _addSimple(result, user, { path: 'kickstarter2019', language });
   }
 
+  if (user.achievements.groupsBeta2022) {
+    _addSimple(result, user, { path: 'groupsBeta2022', language });
+  }
+
+  if (user.achievements.joinedGuild) {
+    _addSimple(result, user, { path: 'joinedGuild', language });
+  }
+
   return result;
 }
 
@@ -368,5 +434,6 @@ achievs.getAchievementsForProfile = function getAchievementsForProfile (user, la
 };
 
 achievs.getContribText = contribText;
+achievs.getQuestCount = questCount;
 
 export default achievs;

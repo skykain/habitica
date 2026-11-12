@@ -35,7 +35,7 @@
 </template>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .progress-container {
     margin-left: 4px;
@@ -113,7 +113,7 @@ export default {
   filters: {
     statFloor (value) {
       if (value < 1 && value > 0) {
-        return Math.ceil(value * 10) / 10;
+        return 1;
       }
       return Math.floor(value);
     },

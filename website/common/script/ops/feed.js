@@ -3,7 +3,6 @@ import findIndex from 'lodash/findIndex';
 import get from 'lodash/get';
 import keys from 'lodash/keys';
 import upperFirst from 'lodash/upperFirst';
-import moment from 'moment';
 import i18n from '../i18n';
 import content from '../content/index';
 import {
@@ -11,7 +10,7 @@ import {
   NotAuthorized,
   NotFound,
 } from '../libs/errors';
-import errorMessage from '../libs/errorMessage';
+import { errorMessage } from '../libs/errorMessage';
 import { checkOnboardingStatus } from '../libs/onboarding';
 
 function evolve (user, pet, req) {
@@ -35,7 +34,7 @@ function evolve (user, pet, req) {
   }, req.language);
 }
 
-export default function feed (user, req = {}, analytics) {
+export default function feed (user, req = {}) {
   let pet = get(req, 'params.pet');
   const foodK = get(req, 'params.food');
   let amount = Number(get(req.query, 'amount', 1));
@@ -115,7 +114,7 @@ export default function feed (user, req = {}, analytics) {
 
     if (!user.achievements.fedPet && user.addAchievement) {
       user.addAchievement('fedPet');
-      checkOnboardingStatus(user, req, analytics);
+      checkOnboardingStatus(user, req);
     }
   }
 
@@ -131,23 +130,14 @@ export default function feed (user, req = {}, analytics) {
           const achievementString = `achievement${upperFirst(achievement.mountAchievement)}`;
           user.addNotification(achievement.mountNotificationType, {
             achievement: achievement.mountAchievement,
-            message: `${i18n.t('modalAchievement')} ${i18n.t(achievementString)}`,
+            icon: `achievement-${achievement.mountAchievement}`,
+            message: i18n.t(achievementString),
             modalText: i18n.t(`${achievementString}ModalText`),
           });
         }
       }
     }
   });
-
-  if (analytics && moment().diff(user.auth.timestamps.created, 'days') < 7) {
-    analytics.track('pet feed', {
-      uuid: user._id,
-      foodKey: food.key,
-      petKey: pet.key,
-      category: 'behavior',
-      headers: req.headers,
-    });
-  }
 
   return [
     user.items.pets[pet.key],

@@ -4,11 +4,10 @@ import iap from '../inAppPurchases';
 import payments from './payments';
 import {
   NotAuthorized,
-  BadRequest,
 } from '../errors';
 import { model as IapPurchaseReceipt } from '../../models/iapPurchaseReceipt';
 import { model as User } from '../../models/user';
-import { getGemsBlock, validateGiftMessage } from './gems';
+import { validateGiftMessage } from './gems';
 
 const api = {};
 
@@ -19,9 +18,110 @@ api.constants = {
   RESPONSE_ALREADY_USED: 'RECEIPT_ALREADY_USED',
   RESPONSE_INVALID_ITEM: 'INVALID_ITEM_PURCHASED',
   RESPONSE_STILL_VALID: 'SUBSCRIPTION_STILL_VALID',
+  RESPONSE_PENDING_SUBSCRIPTION_STATE: 'SUBSCRIPTION_PAYMENT_PENDING',
+  RESPONSE_UNSUPPORTED_SUBSCRIPTION_STATE: 'SUBSCRIPTION_UNSUPPORTED_STATE',
 };
 
-api.verifyGemPurchase = async function verifyGemPurchase (options) {
+function getNoRenewSubCodeFromSku (sku) {
+  let subCode;
+  switch (sku) { // eslint-disable-line default-case
+    case 'com.habitrpg.android.habitica.norenew_subscription.1month':
+      subCode = 'basic_earned';
+      break;
+    case 'com.habitrpg.android.habitica.norenew_subscription.3month':
+      subCode = 'basic_3mo';
+      break;
+    case 'com.habitrpg.android.habitica.norenew_subscription.6month':
+      subCode = 'basic_6mo';
+      break;
+    case 'com.habitrpg.android.habitica.norenew_subscription.12month':
+      subCode = 'basic_12mo';
+      break;
+  }
+  return subCode;
+}
+
+function getPurchaseToken (purchase, googleRes, receiptObj = {}) {
+  return purchase.purchaseToken
+    || googleRes.purchaseToken
+    || receiptObj.token
+    || receiptObj.purchaseToken;
+}
+
+function getPurchasesFromValidatedResponse (googleRes) {
+  const purchases = iap.getPurchaseData(googleRes);
+  if (!purchases || purchases.length === 0) {
+    throw new NotAuthorized(api.constants.RESPONSE_INVALID_RECEIPT);
+  }
+
+  let purchase;
+  let newestDate;
+  for (const thisPurchase of purchases) {
+    const purchaseDateValue = thisPurchase.startTimeMillis
+      || thisPurchase.purchaseDate
+      || thisPurchase.purchaseTime
+      || 0;
+    const purchaseDate = new Date(Number(purchaseDateValue));
+    if (!purchase || !newestDate || purchaseDate > newestDate) {
+      newestDate = purchaseDate;
+      purchase = thisPurchase;
+    }
+  }
+
+  return {
+    purchase,
+    purchases,
+  };
+}
+
+function validateSubscriptionLifecycleState (purchase, options = {}) {
+  const {
+    allowExpired = true,
+    allowSystemCanceled = true,
+  } = options;
+
+  const paymentState = Number(purchase.paymentState);
+  if (paymentState === 0) {
+    throw new NotAuthorized(api.constants.RESPONSE_PENDING_SUBSCRIPTION_STATE);
+  }
+
+  const cancelReason = Number(purchase.cancelReason);
+  const isExpired = purchase.expiryTimeMillis > 0 && iap.isExpired(purchase);
+  const isSystemCanceled = !Number.isNaN(cancelReason) && cancelReason > 0;
+
+  if (!allowExpired && isExpired) {
+    throw new NotAuthorized(api.constants.RESPONSE_INVALID_RECEIPT);
+  }
+
+  if (!allowSystemCanceled && isSystemCanceled && !isExpired) {
+    throw new NotAuthorized(api.constants.RESPONSE_UNSUPPORTED_SUBSCRIPTION_STATE);
+  }
+}
+
+function buildAdditionalData (receipt, signature, purchase = {}) {
+  const receiptData = typeof receipt === 'string' ? JSON.parse(receipt) : { ...receipt };
+
+  if (purchase.productId) {
+    receiptData.productId = purchase.productId;
+  }
+
+  const token = purchase.purchaseToken || receiptData.purchaseToken || receiptData.token;
+  if (token) {
+    receiptData.purchaseToken = token;
+    receiptData.token = token;
+  }
+
+  if (purchase.linkedPurchaseToken) {
+    receiptData.linkedPurchaseToken = purchase.linkedPurchaseToken;
+  }
+
+  return {
+    data: receiptData,
+    signature,
+  };
+}
+
+api.verifyPurchase = async function verifyPurchase (options) {
   const {
     gift, user, receipt, signature, headers,
   } = options;
@@ -61,50 +161,82 @@ api.verifyGemPurchase = async function verifyGemPurchase (options) {
     userId: user._id,
   });
 
-  let gemsBlockKey;
-
-  switch (receiptObj.productId) { // eslint-disable-line default-case
-    case 'com.habitrpg.android.habitica.iap.4gems':
-      gemsBlockKey = '4gems';
-      break;
-    case 'com.habitrpg.android.habitica.iap.20gems':
-    case 'com.habitrpg.android.habitica.iap.21gems':
-      gemsBlockKey = '21gems';
-      break;
-    case 'com.habitrpg.android.habitica.iap.42gems':
-      gemsBlockKey = '42gems';
-      break;
-    case 'com.habitrpg.android.habitica.iap.84gems':
-      gemsBlockKey = '84gems';
-      break;
-  }
-
-  if (!gemsBlockKey) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
-
-  const gemsBlock = getGemsBlock(gemsBlockKey);
-
-  if (gift) {
-    gift.type = 'gems';
-    if (!gift.gems) gift.gems = {};
-    gift.gems.amount = shared.content.gems[gemsBlock.key].gems;
-  }
-
-  await payments.buyGems({
+  await payments.buySkuItem({ // eslint-disable-line no-await-in-loop
     user,
     gift,
-    paymentMethod: this.constants.PAYMENT_METHOD_GOOGLE,
-    gemsBlock,
+    paymentMethod: api.constants.PAYMENT_METHOD_GOOGLE,
+    sku: googleRes.productId,
     headers,
   });
 
   return googleRes;
 };
 
-api.subscribe = async function subscribe (
-  sku, user, receipt, signature,
-  headers, nextPaymentProcessing = undefined,
-) {
-  if (!sku) throw new BadRequest(shared.i18n.t('missingSubscriptionCode'));
+async function findSubscriptionPurchase (additionalData) {
+  const googleRes = await iap.validate(iap.GOOGLE, additionalData);
+
+  const isValidated = iap.isValidated(googleRes);
+  if (!isValidated) throw new NotAuthorized(api.constants.RESPONSE_INVALID_RECEIPT);
+
+  const validated = getPurchasesFromValidatedResponse(googleRes);
+  const { purchases } = validated;
+  let { purchase } = validated;
+  const renewingPurchase = purchases
+    .find(item => item.autoRenewing && !iap.isCanceled(item) && !iap.isExpired(item));
+  if (renewingPurchase) purchase = renewingPurchase;
+
+  return {
+    googleRes,
+    purchase,
+    isCanceled: iap.isCanceled(purchase) || !purchase.autoRenewing,
+    isExpired: iap.isExpired(purchase),
+    expiryTimeMillis: Number(purchase.expiryTimeMillis),
+  };
+}
+
+async function findReplacementSubscriptionPurchase (additionalData) {
+  const receiptData = typeof additionalData.data === 'string'
+    ? JSON.parse(additionalData.data)
+    : { ...additionalData.data };
+
+  const linkedToken = receiptData.linkedPurchaseToken;
+  if (!linkedToken) return null;
+
+  const replacementData = {
+    ...additionalData,
+    data: {
+      ...receiptData,
+      token: linkedToken,
+      purchaseToken: linkedToken,
+    },
+  };
+
+  const details = await findSubscriptionPurchase(replacementData);
+  return {
+    ...details,
+    additionalData: replacementData,
+    customerId: linkedToken,
+  };
+}
+
+api.getSubscriptionPaymentDetails = async function getDetails (userId, subscriptionPlan) {
+  if (!subscriptionPlan || !subscriptionPlan.additionalData) {
+    throw new NotAuthorized(shared.i18n.t('missingSubscription'));
+  }
+  const details = await findSubscriptionPurchase(subscriptionPlan.additionalData);
+  return {
+    customerId: details.purchase.purchaseToken,
+    originalPurchaseDate: new Date(Number(details.purchase.startTimeMillis)),
+    expiryTimeMillis: details.isCanceled || details.isExpired ? details.expiryTimeMillis : null,
+    nextPaymentDate: details.isExpired ? null : details.expiryTimeMillis,
+    productId: details.purchase.productId,
+    transactionId: details.purchase.orderId,
+    isCanceled: details.isCanceled,
+    isExpired: details.isExpired,
+  };
+};
+
+function getSubCodeFromSku (sku) {
   let subCode;
   switch (sku) { // eslint-disable-line default-case
     case 'com.habitrpg.android.habitica.subscription.1month':
@@ -120,9 +252,16 @@ api.subscribe = async function subscribe (
       subCode = 'basic_12mo';
       break;
   }
-  const sub = subCode ? shared.content.subscriptionBlocks[subCode] : false;
-  if (!sub) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
+  return subCode;
+}
 
+api.subscribe = async function subscribe (
+  user,
+  receipt,
+  signature,
+  headers,
+  deferredSku = undefined,
+) {
   await iap.setup();
 
   const testObj = {
@@ -131,54 +270,122 @@ api.subscribe = async function subscribe (
   };
 
   const receiptObj = typeof receipt === 'string' ? JSON.parse(receipt) : receipt; // passed as a string
-  const token = receiptObj.token || receiptObj.purchaseToken;
 
-  const existingUser = await User.findOne({
-    'purchased.plan.customerId': token,
-  }).exec();
-  if (existingUser) throw new NotAuthorized(this.constants.RESPONSE_ALREADY_USED);
+  let existingSub;
+  if (user && user.isSubscribed()) {
+    existingSub = shared.content.subscriptionBlocks[user.purchased.plan.planId];
+  }
 
   const googleRes = await iap.validate(iap.GOOGLE, testObj);
 
   const isValidated = iap.isValidated(googleRes);
   if (!isValidated) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
 
-  nextPaymentProcessing = nextPaymentProcessing || moment.utc().add({ days: 2 }); // eslint-disable-line no-param-reassign, max-len
+  const { purchase } = getPurchasesFromValidatedResponse(googleRes);
+  validateSubscriptionLifecycleState(purchase, {
+    allowExpired: false,
+    allowSystemCanceled: false,
+  });
 
-  await payments.createSubscription({
+  const validatedProductId = purchase.productId || googleRes.productId;
+  const subCode = getSubCodeFromSku(validatedProductId);
+  const sub = subCode ? shared.content.subscriptionBlocks[subCode] : false;
+  if (!sub) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
+
+  const token = getPurchaseToken(purchase, googleRes, receiptObj);
+  if (!token) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
+
+  const { plan } = user.purchased;
+  if (existingSub && plan.customerId === token) {
+    if (plan.dateTerminated && purchase.autoRenewing) {
+      // The user cancelled and then resubscribed through the Play Store, which keeps the token.
+      // Cancelling moved the extra months into dateTerminated
+      const paidUntil = plan.datePaymentExpired || Number(purchase.expiryTimeMillis) || new Date();
+      const extraMonths = moment(plan.dateTerminated).diff(paidUntil, 'months', true);
+      plan.extraMonths = Number(plan.extraMonths || 0) + Math.max(0, extraMonths);
+      plan.dateTerminated = null;
+      plan.datePaymentExpired = null;
+      if (purchase.expiryTimeMillis) {
+        plan.nextBillingDate = new Date(Number(purchase.expiryTimeMillis));
+      }
+    } else if (existingSub === sub) {
+      throw new NotAuthorized(this.constants.RESPONSE_ALREADY_USED);
+    }
+    // A different plan on the same token can happen if the user downgrades their subscription.
+    plan.planId = subCode;
+    plan.deferred = undefined;
+    plan.additionalData = buildAdditionalData(receipt, signature, purchase);
+    await user.save();
+    return;
+  }
+
+  const existingUser = await User.findOne({
+    'purchased.plan.customerId': token,
+  }).exec();
+
+  if (
+    existingUser
+    && existingUser._id !== user._id
+    && !existingUser.purchased.plan.dateTerminated
+  ) {
+    throw new NotAuthorized(this.constants.RESPONSE_ALREADY_USED);
+  }
+
+  let nextPaymentProcessing = moment.utc().add({ days: 2 });
+  let nextBillingDate;
+  if (googleRes.expiryTimeMillis) {
+    nextBillingDate = new Date(Number(googleRes.expiryTimeMillis));
+    if (nextBillingDate < nextPaymentProcessing.toDate()) {
+      nextPaymentProcessing = moment(nextBillingDate);
+    }
+  } else {
+    nextBillingDate = moment.utc().add({ months: sub.months }).toDate();
+  }
+  const data = {
     user,
     customerId: token,
     paymentMethod: this.constants.PAYMENT_METHOD_GOOGLE,
     sub,
     headers,
     nextPaymentProcessing,
-    additionalData: testObj,
-  });
+    nextBillingDate,
+    additionalData: buildAdditionalData(receipt, signature, purchase),
+  };
+  if (existingSub) {
+    if (deferredSku && purchase.linkedPurchaseToken) {
+      const res = await iap.validate(iap.GOOGLE, user.purchased.plan.additionalData);
+      const previousPurchases = iap.getPurchaseData(res);
+      const deferredSubCode = getSubCodeFromSku(deferredSku);
+      if (!deferredSubCode) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
+
+      const previousPurchase = previousPurchases
+        .find(item => getSubCodeFromSku(item.productId) === user.purchased.plan.planId);
+      if (!previousPurchase || !previousPurchase.expiryTimeMillis) {
+        throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
+      }
+
+      nextBillingDate = new Date(Number(previousPurchase.expiryTimeMillis));
+      user.purchased.plan.deferred = {
+        planId: deferredSubCode,
+        deferredUntil: nextBillingDate,
+      };
+      user.purchased.plan.customerId = token;
+      user.purchased.plan.additionalData = buildAdditionalData(receipt, signature, purchase);
+      await user.save();
+      // we don't want to do anything else at this point.
+      // When the deferring ends we will update the data.
+      return;
+    }
+    data.updatedFrom = existingSub;
+    data.updatedFrom.logic = 'payFull';
+  }
+  await payments.createSubscription(data);
 };
 
 api.noRenewSubscribe = async function noRenewSubscribe (options) {
   const {
-    sku, gift, user, receipt, signature, headers,
+    gift, user, receipt, signature, headers,
   } = options;
-  if (!sku) throw new BadRequest(shared.i18n.t('missingSubscriptionCode'));
-  let subCode;
-  switch (sku) { // eslint-disable-line default-case
-    case 'com.habitrpg.android.habitica.norenew_subscription.1month':
-      subCode = 'basic_earned';
-      break;
-    case 'com.habitrpg.android.habitica.norenew_subscription.3month':
-      subCode = 'basic_3mo';
-      break;
-    case 'com.habitrpg.android.habitica.norenew_subscription.6month':
-      subCode = 'basic_6mo';
-      break;
-    case 'com.habitrpg.android.habitica.norenew_subscription.12month':
-      subCode = 'basic_12mo';
-      break;
-  }
-  const sub = subCode ? shared.content.subscriptionBlocks[subCode] : false;
-  if (!sub) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
-
   await iap.setup();
 
   const testObj = {
@@ -186,25 +393,41 @@ api.noRenewSubscribe = async function noRenewSubscribe (options) {
     signature,
   };
 
-  const receiptObj = typeof receipt === 'string' ? JSON.parse(receipt) : receipt; // passed as a string
-  const token = receiptObj.token || receiptObj.purchaseToken;
+  const googleRes = await iap.validate(iap.GOOGLE, testObj);
 
-  const existingReceipt = await IapPurchaseReceipt.findOne({ // eslint-disable-line no-await-in-loop
+  const isValidated = iap.isValidated(googleRes);
+  if (!isValidated) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
+
+  const { purchase } = getPurchasesFromValidatedResponse(googleRes);
+  validateSubscriptionLifecycleState(purchase, {
+    allowExpired: false,
+    allowSystemCanceled: false,
+  });
+
+  const validatedProductId = purchase.productId || googleRes.productId;
+  const subCode = getNoRenewSubCodeFromSku(validatedProductId);
+  const sub = subCode ? shared.content.subscriptionBlocks[subCode] : false;
+  if (!sub) throw new NotAuthorized(this.constants.RESPONSE_INVALID_ITEM);
+
+  const token = getPurchaseToken(
+    purchase,
+    googleRes,
+    typeof receipt === 'string' ? JSON.parse(receipt) : receipt,
+  );
+
+  if (!token) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
+
+  const existingReceipt = await IapPurchaseReceipt.findOne({
     _id: token,
   }).exec();
   if (existingReceipt) throw new NotAuthorized(this.constants.RESPONSE_ALREADY_USED);
 
-  await IapPurchaseReceipt.create({ // eslint-disable-line no-await-in-loop
+  await IapPurchaseReceipt.create({
     _id: token,
     consumed: true,
     // This should always be the buying user even for a gift.
     userId: user._id,
   });
-
-  const googleRes = await iap.validate(iap.GOOGLE, testObj);
-
-  const isValidated = iap.isValidated(googleRes);
-  if (!isValidated) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
 
   const data = {
     user,
@@ -237,33 +460,54 @@ api.cancelSubscribe = async function cancelSubscribe (user, headers) {
   let dateTerminated;
 
   try {
-    const googleRes = await iap.validate(iap.GOOGLE, plan.additionalData);
-
-    const isValidated = iap.isValidated(googleRes);
-    if (!isValidated) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
-
-    const purchases = iap.getPurchaseData(googleRes);
-    if (purchases.length === 0) throw new NotAuthorized(this.constants.RESPONSE_INVALID_RECEIPT);
-    const subscriptionData = purchases[0];
-    // Check to make sure the sub isn't active anymore.
-    if (subscriptionData.autoRenews) return;
-
-    dateTerminated = new Date(Number(subscriptionData.expirationDate));
-  } catch (err) {
-    // Status:410 means that the subsctiption isn't active anymore and we can safely delete it
-    if (err && err.message === 'Status:410') {
+    const details = await findSubscriptionPurchase(plan.additionalData);
+    validateSubscriptionLifecycleState(details.purchase, {
+      allowExpired: true,
+      allowSystemCanceled: true,
+    });
+    if (!details.isCanceled && !details.isExpired) {
+      throw new NotAuthorized(this.constants.RESPONSE_STILL_VALID);
+    }
+    if (details.expiryTimeMillis === 0) {
       dateTerminated = new Date();
+    } else {
+      dateTerminated = details.expiryTimeMillis;
+    }
+  } catch (err) {
+    // Status:410 means that the subscription isn't active anymore and we can safely delete it
+    if (err && err.message === 'Status:410') {
+      const replacement = await findReplacementSubscriptionPurchase(plan.additionalData);
+
+      if (replacement) {
+        validateSubscriptionLifecycleState(replacement.purchase, {
+          allowExpired: true,
+          allowSystemCanceled: true,
+        });
+
+        plan.customerId = replacement.customerId;
+        plan.additionalData = replacement.additionalData;
+        user.markModified('purchased.plan');
+        await user.save();
+
+        if (!replacement.isCanceled && !replacement.isExpired) {
+          throw new NotAuthorized(this.constants.RESPONSE_STILL_VALID);
+        }
+        dateTerminated = replacement.expiryTimeMillis;
+      } else {
+        dateTerminated = new Date();
+      }
     } else {
       throw err;
     }
   }
-
-  await payments.cancelSubscription({
-    user,
-    nextBill: dateTerminated,
-    paymentMethod: this.constants.PAYMENT_METHOD_GOOGLE,
-    headers,
-  });
+  if (dateTerminated) {
+    await payments.cancelSubscription({
+      user,
+      nextBill: dateTerminated,
+      paymentMethod: this.constants.PAYMENT_METHOD_GOOGLE,
+      headers,
+    });
+  }
 };
 
 export default api;

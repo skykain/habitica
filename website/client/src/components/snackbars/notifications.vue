@@ -1,7 +1,6 @@
 <template>
   <div
     class="notifications"
-    :class="notificationsTopPosClass"
     :style="{'--current-scrollY': notificationTopY}"
   >
     <transition-group
@@ -27,7 +26,7 @@
     position: fixed;
     right: 10px;
     width: 350px;
-    z-index: 999;
+    z-index: 999; // to keep it above modal overlays
 
     top: var(--current-scrollY);
 
@@ -44,14 +43,6 @@
     transition: transform 0.25s ease-in, opacity 0.25s ease-in;
   }
 
-  .notifications-move {
-    // transition: transform .5s;
-  }
-
-  .notifications-enter-active {
-    // transition: opacity .5s;
-  }
-
   .notifications-leave-active {
     position: absolute;
     right: 0;
@@ -66,10 +57,11 @@
 
 <script>
 import debounce from 'lodash/debounce';
+import find from 'lodash/find';
 
+import { sleepAsync } from '@/../../common/script/libs/sleepAsync';
 import { mapState } from '@/libs/store';
 import notification from './notification';
-import { sleepAsync } from '../../../../common/script/libs/sleepAsync';
 import { getBannerHeight } from '@/libs/banner.func';
 import { EVENTS } from '@/libs/events';
 import { worldStateMixin } from '@/mixins/worldState';
@@ -80,12 +72,12 @@ const DELAY_DELETE_AND_NEW = 60;
 const DELAY_FILLING_ENTRIES = 240;
 
 export default {
-  mixins: [
-    worldStateMixin,
-  ],
   components: {
     notification,
   },
+  mixins: [
+    worldStateMixin,
+  ],
   props: {
     preventQueue: {
       type: Boolean,
@@ -103,39 +95,40 @@ export default {
       removalIntervalId: null,
       notificationTopY: '0px',
       preventMultipleWatchExecution: false,
-      gemsPromoBannerHeight: null,
+      eventPromoBannerHeight: null,
+      privacyBannerHeight: null,
       sleepingBannerHeight: null,
+      warningBannerHeight: null,
     };
   },
   computed: {
     ...mapState({
       notificationStore: 'notificationStore',
-      userSleeping: 'user.data.preferences.sleep',
-      currentEvent: 'worldState.data.currentEvent',
+      currentEventList: 'worldState.data.currentEventList',
     }),
-    notificationsTopPosClass () {
-      const base = 'notifications-top-pos-';
-      let modifier = '';
-
-      if (this.userSleeping) {
-        modifier = 'sleeping';
-      } else {
-        modifier = 'normal';
-      }
-
-      return `${base}${modifier} scroll-${this.scrollY}`;
+    currentEvent () {
+      return find(this.currentEventList, event => Boolean(event.gemsPromo) || Boolean(event.promo));
+    },
+    isEventActive () {
+      return Boolean(this.currentEvent?.event);
     },
     notificationBannerHeight () {
       let scrollPosToCheck = 56;
+
+      if (this.privacyBannerHeight) {
+        scrollPosToCheck += this.privacyBannerHeight;
+      }
+
+      if (this.warningBannerHeight) {
+        scrollPosToCheck += this.warningBannerHeight;
+      }
 
       if (this.sleepingBannerHeight) {
         scrollPosToCheck += this.sleepingBannerHeight;
       }
 
-      if (this.currentEvent
-          && this.currentEvent.event
-      ) {
-        scrollPosToCheck += this.gemsPromoBannerHeight ?? 0;
+      if (this.isEventActive) {
+        scrollPosToCheck += this.eventPromoBannerHeight ?? 0;
       }
 
       return scrollPosToCheck;
@@ -169,11 +162,14 @@ export default {
       this.preventMultipleWatchExecution = false;
     },
     currentEvent: function currentEventChanged () {
-      this.gemsPromoBannerHeight = getBannerHeight('gems-promo');
+      this.updateEventBannerHeight();
     },
   },
   async mounted () {
     window.addEventListener('scroll', this.updateScrollY, {
+      passive: true,
+    });
+    window.addEventListener('resize', this.updateBannerHeightAndScrollY, {
       passive: true,
     });
 
@@ -290,11 +286,6 @@ export default {
       }
     },
     triggerRemovalTimerIfAllowed () {
-      // this is only for storybook
-      if (this.preventQueue) {
-        return;
-      }
-
       if (this.notificationStore.length !== 0) {
         this.startNotificationRemovalTimer();
       }
@@ -307,7 +298,7 @@ export default {
 
       this.debug('start removal interval');
       this.removalIntervalId = setInterval(() => {
-        const nonErrorNotifications = this.visibleNotifications.filter(n => n.type !== 'error');
+        const nonErrorNotifications = this.visibleNotifications.filter(n => n.type !== 'error' && n.timeout); // eslint-disable-line max-len
 
         if (nonErrorNotifications.length !== 0) {
           const firstEntry = nonErrorNotifications[0];
@@ -355,9 +346,32 @@ export default {
     }, 16),
 
     updateBannerHeightAndScrollY () {
-      this.gemsPromoBannerHeight = getBannerHeight('gems-promo');
+      this.updateEventBannerHeight();
+      this.privacyBannerHeight = document.getElementById('privacy-banner')?.getBoundingClientRect().height || 0;
+      this.warningBannerHeight = getBannerHeight('chat-warning');
       this.sleepingBannerHeight = getBannerHeight('damage-paused');
       this.updateScrollY();
+    },
+
+    updateEventBannerHeight () {
+      if (this.isEventActive) {
+        this.eventPromoBannerHeight = getBannerHeight(this.currentEventBannerName());
+      }
+    },
+
+    currentEventBannerName () {
+      // if there are any other types of promo bars
+      // this method needs to be updated
+
+      if (this.currentEvent?.promo) {
+        return 'gift-promo';
+      }
+
+      if (this.currentEvent?.gemsPromo) {
+        return 'gems-promo';
+      }
+
+      return '';
     },
   },
 };

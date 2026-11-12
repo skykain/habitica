@@ -1,17 +1,17 @@
 {
     "lostAllHealth": "Ostao/la si bez Zdravlja!",
-    "dontDespair": "Ne očajavaj!",
-    "deathPenaltyDetails": "Izgubio/la si Level, Zlatnike i komad Opreme, ali možeš ih vratiti marljivim radom! Sretno--sjajno će te ići!",
-    "refillHealthTryAgain": "Obnovi Zdravlje i pokušaj ponovno",
-    "dyingOftenTips": "Događa li se ovo često? <a href='http://habitica.wikia.com/wiki/Death_Mechanics#Strategies_for_Staying_Alive' target='_blank'>Evo nekoliko savjeta!</a>",
+    "dontDespair": "Ne očajavajte!",
+    "deathPenaltyDetails": "Izgubio/la si Razinu, Zlato i komad Opreme, ali sve to možeš vratiti napornim radom! Sretno—bit ćeš sjajan/na.",
+    "refillHealthTryAgain": "Obnovi Zdravlje i Pokušaj Ponovno",
+    "dyingOftenTips": "Događa li se ovo često? <%= linkOpen %>Evo nekoliko savjeta!<%= linkClose %>",
     "losingHealthWarning": "Pripazi- gubiš Zdravlje!",
-    "losingHealthWarning2": "Nemoj dopustiti da ti Zdravlje padne na nulu! Ako se to dogodi, izgubit ćeš level, svoje Zlatnike, i komad Opreme.",
-    "toRegainHealth": "Da bi vratio/la Zdravlje:",
-    "lowHealthTips1": "Dostigni idući level da bi se potpuno iscijelio/la!",
-    "lowHealthTips2": "Kupi Čarobni napitak za Zdravlje iz stupca Nagrada za obnovu 15 bodova Zdravlja.",
+    "losingHealthWarning2": "Ne dopusti da ti Zdravlje padne na nulu! Ako se to dogodi, izgubit ćeš razinu, svoje Zlato i komad opreme.",
+    "toRegainHealth": "Da bi vratili Zdravlje:",
+    "lowHealthTips1": "Dosegnite višu razinu za potpuno izlječenje!",
+    "lowHealthTips2": "Kupi Napitak za zdravlje iz stupca Nagrade da povratiš 15 Bodova Zdravlja.",
     "losingHealthQuickly": "Brzo gubiš Zdravlje?",
-    "lowHealthTips3": "Neobavljeni Svakodnevni zadaci ti nanose štetu preko noći, zato pripazi da ih ne dodaš previše na početku!",
-    "lowHealthTips4": "Ako Svakodnevni zadatak nije aktivan na određeni dan, možeš ga deaktivirati klikom na ikonu olovke.",
+    "lowHealthTips3": "Nedovršeni Dnevni zadaci nanose ti štetu preko noći, stoga pazi da ih ispočetka ne dodaješ previše!",
+    "lowHealthTips4": "Ako Dnevni zadatak nije dospio određenog dana, možeš ga onemogućiti klikom na ikonu olovke.",
     "goodLuck": "Sretno!",
-    "cannotRevive": "Ne možeš se oživjeti ako nisi mrtav/va."
+    "cannotRevive": "Nije moguće oživjeti ako niste mrtvi"
 }

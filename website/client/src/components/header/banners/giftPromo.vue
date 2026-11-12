@@ -34,7 +34,7 @@
 </template>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .announce-text {
     color: $white;
@@ -63,10 +63,11 @@
 </style>
 
 <script>
+import find from 'lodash/find';
 import { mapState } from '@/libs/store';
 import BaseBanner from './base';
 
-import gifts from '@/assets/svg/gifts.svg';
+import gifts from '@/assets/svg/gifts.svg?raw';
 
 export default {
   components: {
@@ -74,8 +75,11 @@ export default {
   },
   computed: {
     ...mapState({
-      currentEvent: 'worldState.data.currentEvent',
+      currentEventList: 'worldState.data.currentEventList',
     }),
+    currentEvent () {
+      return find(this.currentEventList, event => Boolean(event.promo));
+    },
     eventName () {
       return this.currentEvent && this.currentEvent.event;
     },

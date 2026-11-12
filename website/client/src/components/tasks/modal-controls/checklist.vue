@@ -1,80 +1,119 @@
 <template>
   <div class="checklist-component">
-    <lockable-label
-      :locked="disabled || disableItems"
-      :text="$t('checklist')"
-    />
-    <draggable
-      v-model="checklist"
-      :options="{
-        handle: '.grippy',
-        filter: '.task-dropdown',
-        disabled: disabled,
-      }"
-      @update="updateChecklist"
+    <div
+      class="d-flex"
     >
+      <lockable-label
+        :locked="disabled"
+        :text="$t('checklist')"
+      />
       <div
-        v-for="(item, $index) in checklist"
-        :key="item.id"
-        class="inline-edit-input-group checklist-group input-group"
+        class="svg-icon icon-16 my-auto ml-auto pointer"
+        :class="{'chevron-flip': showChecklist}"
+        @click="showChecklist = !showChecklist"
+        v-html="icons.chevron"
+      >
+      </div>
+    </div>
+    <b-collapse
+      id="checklistCollapse"
+      v-model="showChecklist"
+    >
+      <draggable
+        v-model="checklist"
+        handle=".grippy"
+        filter=".task-dropdown"
+        :disabled="disabled"
+        @update="updateChecklist"
+      >
+        <div
+          v-for="(item, $index) in checklist"
+          :key="item.id"
+          class="inline-edit-input-group checklist-group input-group"
+        >
+          <span
+            v-if="!disabled && !disableDrag"
+            class="grippy"
+            v-html="icons.grip"
+          >
+          </span>
+
+          <checkbox
+            v-if="!disableEdit"
+            :id="`checklist-${item.id}`"
+            :checked.sync="item.completed"
+            :disabled="disabled"
+            class="input-group-prepend"
+            :class="{'cursor-auto': disabled}"
+          />
+
+          <input
+            :ref="'checklistItem-' + $index"
+            v-model="item.text"
+            class="inline-edit-input checklist-item form-control"
+            type="text"
+            :disabled="disabled || disableEdit"
+            :class="summaryClass(item)"
+            @focus="setActiveItem($index)"
+            @keydown="autoCompleteMixinUpdateCarretPosition"
+            @keydown.tab="autoCompleteMixinHandleTab($event)"
+            @keydown.up="autoCompleteMixinSelectPreviousAutocomplete($event)"
+            @keydown.down="autoCompleteMixinSelectNextAutocomplete($event)"
+            @keypress.enter="autoCompleteMixinSelectAutocomplete($event)"
+            @keydown.esc="autoCompleteMixinHandleEscape($event)"
+          >
+          <span
+            v-if="!disabled && !disableEdit"
+            class="input-group-append"
+            @click="removeChecklistItem($index)"
+          >
+            <div
+              v-once
+              class="svg-icon destroy-icon"
+              v-html="icons.destroy"
+            >
+            </div>
+          </span>
+        </div>
+      </draggable>
+      <div
+        v-if="!disabled && !disableEdit"
+        class="inline-edit-input-group checklist-group input-group new-checklist"
+        :class="{'top-border': items.length === 0}"
       >
         <span
-          v-if="!disabled && !disableDrag"
-          class="grippy"
-          v-html="icons.grip"
+          v-once
+          class="input-group-prepend new-icon"
+          v-html="icons.positive"
         >
         </span>
-
-        <checkbox
-          :id="`checklist-${item.id}`"
-          :checked.sync="item.completed"
-          :disabled="disabled || disableItems"
-          class="input-group-prepend"
-          :class="{'cursor-auto': disabled || disableItems}"
-        />
 
         <input
-          v-model="item.text"
+          ref="newChecklistInput"
+          v-model="newChecklistItem"
           class="inline-edit-input checklist-item form-control"
           type="text"
-          :disabled="disabled || disableItems"
+          :placeholder="$t('newChecklistItem')"
+          @focus="setActiveItem(-1)"
+          @keydown="autoCompleteMixinUpdateCarretPosition"
+          @keydown.tab="autoCompleteMixinHandleTab($event)"
+          @keydown.up="autoCompleteMixinSelectPreviousAutocomplete($event)"
+          @keydown.down="autoCompleteMixinSelectNextAutocomplete($event)"
+          @keypress.enter="newChecklistEnterHandler($event)"
+          @keyup.enter="addChecklistItem($event, true)"
+          @keydown.esc="autoCompleteMixinHandleEscape($event)"
+          @blur="addChecklistItem($event, false)"
         >
-        <span
-          v-if="!disabled && !disableItems"
-          class="input-group-append"
-          @click="removeChecklistItem($index)"
-        >
-          <div
-            v-once
-            class="svg-icon destroy-icon"
-            v-html="icons.destroy"
-          >
-          </div>
-        </span>
       </div>
-    </draggable>
-    <div
-      v-if="!disabled && !disableItems"
-      class="inline-edit-input-group checklist-group input-group new-checklist"
-      :class="{'top-border': items.length === 0}"
-    >
-      <span
-        v-once
-        class="input-group-prepend new-icon"
-        v-html="icons.positive"
-      >
-      </span>
-
-      <input
-        v-model="newChecklistItem"
-        class="inline-edit-input checklist-item form-control"
-        type="text"
-        :placeholder="$t('newChecklistItem')"
-        @keypress.enter="setHasPossibilityOfIMEConversion(false)"
-        @keyup.enter="addChecklistItem($event, true)"
-        @blur="addChecklistItem($event, false)"
-      >
-    </div>
+      <emoji-auto-complete
+        ref="emojiAutocomplete"
+        :text="activeFieldText"
+        :textbox="textbox"
+        :coords="mixinData.autoComplete.coords"
+        :caret-position="mixinData.autoComplete.caretPosition"
+        @select="selectedAutocomplete"
+      />
+    </b-collapse>
   </div>
 </template>
 
@@ -83,12 +122,14 @@
 import draggable from 'vuedraggable';
 import { v4 as uuid } from 'uuid';
 
-import positiveIcon from '@/assets/svg/positive.svg';
-import deleteIcon from '@/assets/svg/delete.svg';
-import chevronIcon from '@/assets/svg/chevron.svg';
-import gripIcon from '@/assets/svg/grip.svg';
+import positiveIcon from '@/assets/svg/positive.svg?raw';
+import deleteIcon from '@/assets/svg/delete.svg?raw';
+import chevronIcon from '@/assets/svg/chevron.svg?raw';
+import gripIcon from '@/assets/svg/grip.svg?raw';
 import checkbox from '@/components/ui/checkbox';
 import lockableLabel from './lockableLabel';
+import emojiAutoComplete from '@/components/chat/emojiAutoComplete';
+import { autoCompleteHelperMixin } from '@/mixins/autoCompleteHelper';
 
 export default {
   name: 'Checklist',
@@ -96,7 +137,9 @@ export default {
     checkbox,
     draggable,
     lockableLabel,
+    emojiAutoComplete,
   },
+  mixins: [autoCompleteHelperMixin],
   props: {
     disabled: {
       type: Boolean,
@@ -104,7 +147,7 @@ export default {
     disableDrag: {
       type: Boolean,
     },
-    disableItems: {
+    disableEdit: {
       type: Boolean,
     },
     items: {
@@ -114,8 +157,11 @@ export default {
   data () {
     return {
       checklist: this.items,
+      showChecklist: true,
       hasPossibilityOfIMEConversion: true,
       newChecklistItem: null,
+      textbox: null,
+      activeItemIndex: -1,
       icons: Object.freeze({
         positive: positiveIcon,
         destroy: deleteIcon,
@@ -124,7 +170,21 @@ export default {
       }),
     };
   },
+  computed: {
+    activeFieldText () {
+      if (this.activeItemIndex === -1) {
+        return this.newChecklistItem || '';
+      }
+      const item = this.checklist[this.activeItemIndex];
+      return item ? item.text || '' : '';
+    },
+  },
   methods: {
+    summaryClass (item) {
+      if (!this.disableEdit) return '';
+      if (item.completed) return 'summary-completed';
+      return 'summary-incomplete';
+    },
     updateChecklist () {
       this.$emit('update:items', this.checklist);
     },
@@ -157,21 +217,64 @@ export default {
       this.checklist.splice(i, 1);
       this.updateChecklist();
     },
+    setActiveItem (index) {
+      this.activeItemIndex = index;
+      if (index === -1) {
+        this.textbox = this.$refs.newChecklistInput;
+      } else {
+        const refArr = this.$refs[`checklistItem-${index}`];
+        this.textbox = refArr ? refArr[0] || refArr : null;
+      }
+    },
+    newChecklistEnterHandler (e) {
+      const ac = this._getActiveAutocomplete();
+      if (ac && ac.selected !== null) {
+        e.preventDefault();
+        ac.makeSelection();
+      } else if (ac) {
+        ac.cancel();
+        this.setHasPossibilityOfIMEConversion(false);
+      } else {
+        this.setHasPossibilityOfIMEConversion(false);
+      }
+    },
+    selectedAutocomplete (newText, newCaret) {
+      if (this.activeItemIndex === -1) {
+        this.newChecklistItem = newText;
+      } else {
+        this.checklist[this.activeItemIndex].text = newText;
+      }
+      this.$nextTick(() => {
+        if (this.textbox) {
+          this.textbox.setSelectionRange(newCaret, newCaret);
+          this.textbox.focus();
+        }
+      });
+    },
   },
 };
 </script>
 
 <style lang="scss">
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .checklist-component {
+    position: relative;
 
-    .top-border {
-      border-top: 1px solid $gray-500;
+    .chevron-flip {
+      transform: translateY(-5px) rotate(180deg);
     }
 
     .lock-icon {
       color: $gray-200;
+    }
+
+    .pointer {
+      cursor: pointer;
+    }
+
+    .top-border {
+      border-top: 1px solid $gray-500;
     }
 
     .checklist-group {
@@ -251,6 +354,13 @@ export default {
       border-radius: 0px;
       border: none !important;
       padding-left: 36px;
+
+      &.summary-incomplete {
+        opacity: 1;
+      }
+      &.summary-completed {
+        text-decoration: line-through;
+      }
     }
 
     .checklist-group {

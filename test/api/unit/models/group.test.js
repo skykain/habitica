@@ -1,11 +1,13 @@
 import moment from 'moment';
 import { v4 as generateUUID } from 'uuid';
 import validator from 'validator';
-import { sleep, translationCheck } from '../../../helpers/api-unit.helper';
+import { translationCheck, waitFor } from '../../../helpers/api-unit.helper';
 import {
   SPAM_MESSAGE_LIMIT,
   SPAM_MIN_EXEMPT_CONTRIB_LEVEL,
   SPAM_WINDOW_LENGTH,
+  MAX_CHAT_COUNT,
+  MAX_SUBBED_GROUP_CHAT_COUNT,
   INVITES_LIMIT,
   model as Group,
 } from '../../../../website/server/models/group';
@@ -18,6 +20,7 @@ import {
 import * as email from '../../../../website/server/libs/email';
 import { TAVERN_ID } from '../../../../website/common/script/constants';
 import shared from '../../../../website/common';
+import { chatModel as Chat } from '../../../../website/server/models/message';
 
 describe('Group Model', () => {
   let party; let questLeader; let participatingMember;
@@ -274,13 +277,13 @@ describe('Group Model', () => {
 
           expect(Group.prototype.sendChat).to.be.calledOnce;
           expect(Group.prototype.sendChat).to.be.calledWith({
-            message: '`Participating Member attacks Wailing Whale for 5.0 damage. Wailing Whale attacks party for 7.5 damage.`',
+            message: '`Participating Member attacks Wailing Whale for 5 damage. Wailing Whale attacks party for 8 damage.`',
             info: {
-              bossDamage: '7.5',
+              bossDamage: '8',
               quest: 'whale',
               type: 'boss_damage',
               user: 'Participating Member',
-              userDamage: '5.0',
+              userDamage: '5',
             },
           });
         });
@@ -1029,7 +1032,7 @@ describe('Group Model', () => {
         expect(toJSON.chat.length).to.equal(1);
       });
 
-      it('shows messages with >= 2 flag to admins', async () => {
+      it('shows messages with >= 2 flag to moderators', async () => {
         party.chat = [{
           flagCount: 3,
           info: {
@@ -1037,12 +1040,12 @@ describe('Group Model', () => {
             quest: 'basilist',
           },
         }];
-        const admin = new User({ 'contributor.admin': true });
+        const admin = new User({ 'permissions.moderator': true });
         const toJSON = await Group.toJSONCleanChat(party, admin);
         expect(toJSON.chat.length).to.equal(1);
       });
 
-      it('doesn\'t show flagged messages to non-admins', async () => {
+      it('doesn\'t show flagged messages to non-moderators', async () => {
         party.chat = [{
           flagCount: 3,
           info: {
@@ -1356,13 +1359,37 @@ describe('Group Model', () => {
       });
     });
 
-    describe('#sendChat', () => {
-      beforeEach(() => {
-        sandbox.spy(User, 'update');
+    describe('#getEffectiveChatLimit', () => {
+      it('returns the correct chat limit', () => {
+        const group = new Group();
+        expect(group.getEffectiveChatLimit()).to.eql(MAX_CHAT_COUNT);
       });
 
-      it('formats message', () => {
-        const chatMessage = party.sendChat({
+      it('returns the passed limit if it is lower than the max', () => {
+        const group = new Group();
+        expect(group.getEffectiveChatLimit(10)).to.eql(10);
+      });
+
+      it('returns the max if the passed limit is higher', () => {
+        const group = new Group();
+        expect(group.getEffectiveChatLimit(MAX_CHAT_COUNT + 10)).to.eql(MAX_CHAT_COUNT);
+      });
+
+      it('returns the max for group plans', () => {
+        const group = new Group();
+        group.purchased.plan.customerId = '110002222333';
+        expect(group.getEffectiveChatLimit()).to.eql(MAX_SUBBED_GROUP_CHAT_COUNT);
+      });
+    });
+
+    describe('#sendChat', () => {
+      beforeEach(() => {
+        sandbox.spy(User, 'updateOne');
+        sandbox.spy(User, 'updateMany');
+      });
+
+      it('formats message', async () => {
+        const chatMessage = await party.sendChat({
           message: 'a _new_ message with *markdown*',
           user: {
             _id: 'user-id',
@@ -1395,8 +1422,8 @@ describe('Group Model', () => {
         expect(chat.user).to.eql('user name');
       });
 
-      it('formats message as system if no user is passed in', () => {
-        const chat = party.sendChat({ message: 'a system message' });
+      it('formats message as system if no user is passed in', async () => {
+        const chat = await party.sendChat({ message: 'a system message' });
 
         expect(chat.text).to.eql('a system message');
         expect(validator.isUUID(chat.id)).to.eql(true);
@@ -1410,54 +1437,84 @@ describe('Group Model', () => {
         expect(chat.user).to.not.exist;
       });
 
-      it('updates users about new messages in party', () => {
-        party.sendChat({ message: 'message' });
+      it('updates users about new messages in party', async () => {
+        await party.sendChat({ message: 'message' });
 
-        expect(User.update).to.be.calledOnce;
-        expect(User.update).to.be.calledWithMatch({
+        expect(User.updateMany).to.be.calledOnce;
+        expect(User.updateMany).to.be.calledWithMatch({
           'party._id': party._id,
           _id: { $ne: '' },
         });
       });
 
-      it('updates users about new messages in group', () => {
+      it('updates users about new messages in group', async () => {
         const group = new Group({
           type: 'guild',
         });
 
-        group.sendChat({ message: 'message' });
+        await group.sendChat({ message: 'message' });
 
-        expect(User.update).to.be.calledOnce;
-        expect(User.update).to.be.calledWithMatch({
+        expect(User.updateMany).to.be.calledOnce;
+        expect(User.updateMany).to.be.calledWithMatch({
           guilds: group._id,
           _id: { $ne: '' },
         });
       });
 
-      it('does not send update to user that sent the message', () => {
-        party.sendChat({ message: 'message', user: { _id: 'user-id', profile: { name: 'user' } } });
+      it('does not send update to user that sent the message', async () => {
+        await party.sendChat({ message: 'message', user: { _id: 'user-id', profile: { name: 'user' } } });
 
-        expect(User.update).to.be.calledOnce;
-        expect(User.update).to.be.calledWithMatch({
+        expect(User.updateMany).to.be.calledOnce;
+        expect(User.updateMany).to.be.calledWithMatch({
           'party._id': party._id,
           _id: { $ne: 'user-id' },
         });
       });
 
-      it('skips sending new message notification for guilds with > 5000 members', () => {
+      it('skips sending new message notification for guilds with > 5000 members', async () => {
         party.memberCount = 5001;
 
-        party.sendChat({ message: 'message' });
+        await party.sendChat({ message: 'message' });
 
-        expect(User.update).to.not.be.called;
+        expect(User.updateMany).to.not.be.called;
       });
 
-      it('skips sending messages to the tavern', () => {
+      it('skips sending messages to the tavern', async () => {
         party._id = TAVERN_ID;
 
-        party.sendChat({ message: 'message' });
+        await party.sendChat({ message: 'message' });
 
-        expect(User.update).to.not.be.called;
+        expect(User.updateMany).to.not.be.called;
+      });
+    });
+
+    describe('#trimChat', () => {
+      it('Only checks last message when not enough messages to trim', async () => {
+        sandbox.spy(Chat, 'find');
+        sandbox.spy(Chat, 'deleteMany');
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date() });
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date() });
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date() });
+        await party.trimChat();
+
+        expect(Chat.find).to.be.calledOnce;
+        expect(Chat.deleteMany).to.not.be.called;
+        expect(await Chat.countDocuments({ groupId: party._id })).to.eql(3);
+      });
+      it('Deletes messages over the limit', async () => {
+        sandbox.spy(Chat, 'find');
+        sandbox.spy(Chat, 'deleteMany');
+        // distinct timestamps, messages older than the last kept one are deleted
+        const now = Date.now();
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date(now - 2000) });
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date(now - 1000) });
+        await Chat.insertOne({ groupId: party._id, timestamp: new Date(now) });
+
+        await party.trimChat(1);
+
+        expect(Chat.find).to.be.calledOnce;
+        expect(Chat.deleteMany).to.be.calledOnce;
+        expect(await Chat.countDocuments({ groupId: party._id })).to.eql(1);
       });
     });
 
@@ -1614,8 +1671,6 @@ describe('Group Model', () => {
 
           await party.startQuest(nonParticipatingMember);
 
-          await sleep(0.5);
-
           expect(email.sendTxn).to.be.calledOnce;
 
           const memberIds = _.map(email.sendTxn.args[0][0], '_id');
@@ -1660,8 +1715,6 @@ describe('Group Model', () => {
 
           await party.startQuest(nonParticipatingMember);
 
-          await sleep(0.5);
-
           expect(questActivityWebhook.send).to.be.calledThrice; // for 3 participating members
 
           const args = questActivityWebhook.send.args[0];
@@ -1694,8 +1747,6 @@ describe('Group Model', () => {
 
           await party.startQuest(nonParticipatingMember);
 
-          await sleep(0.5);
-
           expect(email.sendTxn).to.be.calledOnce;
 
           const memberIds = _.map(email.sendTxn.args[0][0], '_id');
@@ -1718,8 +1769,6 @@ describe('Group Model', () => {
 
           await party.startQuest(participatingMember);
 
-          await sleep(0.5);
-
           expect(email.sendTxn).to.be.calledOnce;
 
           const memberIds = _.map(email.sendTxn.args[0][0], '_id');
@@ -1731,7 +1780,7 @@ describe('Group Model', () => {
         });
 
         it('updates participting members (not including user)', async () => {
-          sandbox.spy(User, 'update');
+          sandbox.spy(User, 'updateMany');
 
           await party.startQuest(nonParticipatingMember);
 
@@ -1739,7 +1788,7 @@ describe('Group Model', () => {
             questLeader._id, participatingMember._id, sleepingParticipatingMember._id,
           ];
 
-          expect(User.update).to.be.calledWith(
+          expect(User.updateMany).to.be.calledWith(
             { _id: { $in: members } },
             {
               $set: {
@@ -1752,11 +1801,11 @@ describe('Group Model', () => {
         });
 
         it('updates non-user quest leader and decrements quest scroll', async () => {
-          sandbox.spy(User, 'update');
+          sandbox.spy(User, 'updateOne');
 
           await party.startQuest(participatingMember);
 
-          expect(User.update).to.be.calledWith(
+          expect(User.updateOne).to.be.calledWith(
             { _id: questLeader._id },
             {
               $inc: {
@@ -1818,29 +1867,29 @@ describe('Group Model', () => {
         };
 
         it('doesn\'t retry successful operations', async () => {
-          sandbox.stub(User, 'update').returns(successfulMock);
+          sandbox.stub(User, 'updateOne').returns(successfulMock);
 
           await party.finishQuest(quest);
 
-          expect(User.update).to.be.calledThrice;
+          expect(User.updateOne).to.be.calledThrice;
         });
 
         it('stops retrying when a successful update has occurred', async () => {
-          const updateStub = sandbox.stub(User, 'update');
+          const updateStub = sandbox.stub(User, 'updateOne');
           updateStub.onCall(0).returns(failedMock);
           updateStub.returns(successfulMock);
 
           await party.finishQuest(quest);
 
-          expect(User.update.callCount).to.equal(4);
+          expect(User.updateOne.callCount).to.equal(4);
         });
 
         it('retries failed updates at most five times per user', async () => {
-          sandbox.stub(User, 'update').returns(failedMock);
+          sandbox.stub(User, 'updateOne').returns(failedMock);
 
           await expect(party.finishQuest(quest)).to.eventually.be.rejected;
 
-          expect(User.update.callCount).to.eql(15); // for 3 users
+          expect(User.updateOne.callCount).to.eql(15); // for 3 users
         });
       });
 
@@ -1925,7 +1974,10 @@ describe('Group Model', () => {
         await questLeader.save();
         await party.finishQuest(quest);
 
-        await sleep(0.5);
+        await waitFor(async () => {
+          const leader = await User.findById(questLeader._id).exec();
+          expect(leader.achievements.lostMasterclasser).to.eql(true);
+        });
 
         const [
           updatedLeader,
@@ -2087,17 +2139,17 @@ describe('Group Model', () => {
 
       context('Party quests', () => {
         it('updates participating members with rewards', async () => {
-          sandbox.spy(User, 'update');
+          sandbox.spy(User, 'updateOne');
           await party.finishQuest(quest);
 
-          expect(User.update).to.be.calledThrice;
-          expect(User.update).to.be.calledWithMatch({
+          expect(User.updateOne).to.be.calledThrice;
+          expect(User.updateOne).to.be.calledWithMatch({
             _id: questLeader._id,
           });
-          expect(User.update).to.be.calledWithMatch({
+          expect(User.updateOne).to.be.calledWithMatch({
             _id: participatingMember._id,
           });
-          expect(User.update).to.be.calledWithMatch({
+          expect(User.updateOne).to.be.calledWithMatch({
             _id: sleepingParticipatingMember._id,
           });
         });
@@ -2147,7 +2199,7 @@ describe('Group Model', () => {
 
         await party.finishQuest(quest);
 
-        await sleep(0.5);
+        await waitFor(() => expect(questActivityWebhook.send).to.be.called);
 
         expect(questActivityWebhook.send).to.be.calledOnce;
 
@@ -2172,11 +2224,11 @@ describe('Group Model', () => {
         });
 
         it('updates all users with rewards', async () => {
-          sandbox.spy(User, 'update');
+          sandbox.spy(User, 'updateMany');
           await party.finishQuest(tavernQuest);
 
-          expect(User.update).to.be.calledOnce;
-          expect(User.update).to.be.calledWithMatch({});
+          expect(User.updateMany).to.be.calledOnce;
+          expect(User.updateMany).to.be.calledWithMatch({});
         });
 
         it('sets quest completed to the world quest key', async () => {
@@ -2272,7 +2324,7 @@ describe('Group Model', () => {
 
         guild.sendGroupChatReceivedWebhooks(chat);
 
-        await sleep();
+        await waitFor(() => expect(groupChatReceivedWebhook.send).to.be.called);
 
         expect(groupChatReceivedWebhook.send).to.be.calledOnce;
 
@@ -2325,10 +2377,10 @@ describe('Group Model', () => {
 
         await guild.save();
 
-        const groupMessage = guild.sendChat({ message: 'Test message.' });
+        const groupMessage = await guild.sendChat({ message: 'Test message.' });
         await groupMessage.save();
 
-        await sleep();
+        await waitFor(() => expect(groupChatReceivedWebhook.send).to.be.called);
 
         expect(groupChatReceivedWebhook.send).to.be.calledOnce;
 
@@ -2392,7 +2444,7 @@ describe('Group Model', () => {
 
         guild.sendGroupChatReceivedWebhooks(chat);
 
-        await sleep();
+        await waitFor(() => expect(groupChatReceivedWebhook.send).to.have.callCount(3));
 
         expect(groupChatReceivedWebhook.send).to.be.calledThrice;
 

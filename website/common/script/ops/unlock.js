@@ -6,6 +6,8 @@ import { NotAuthorized, BadRequest } from '../libs/errors';
 import { removeItemByPath } from './pinnedGearUtils';
 import getItemInfo from '../libs/getItemInfo';
 import content from '../content/index';
+import updateUserBalance from './updateUserBalance';
+import { getScheduleMatchingGroup } from '../content/constants/schedule';
 
 const incentiveBackgrounds = ['blue', 'green', 'red', 'purple', 'yellow'];
 
@@ -14,7 +16,11 @@ const incentiveBackgrounds = ['blue', 'green', 'red', 'purple', 'yellow'];
  * and `headAccessory_wolfEars`
  */
 function splitPathItem (path) {
-  return path.match(/(.+)\.([^.]+)/).splice(1);
+  const match = path.match(/(.+)\.([^.]+)/);
+  if (!match) {
+    return [null];
+  }
+  return match.splice(1);
 }
 
 /**
@@ -29,11 +35,15 @@ function invalidSet (req) {
  */
 function getItemByPath (path, setType) {
   const [itemPathParent, itemKey] = splitPathItem(path);
+  if (!itemPathParent || !itemKey) {
+    return null;
+  }
 
   if (setType === 'gear') return content.gear.flat[itemKey];
   if (setType === 'hair') {
     // itemPathParent is in this format: hair.purple
     const hairType = itemPathParent.split('.')[1];
+    if (!content.appearances.hair[hairType]) return null;
     return content.appearances.hair[hairType][itemKey];
   }
 
@@ -204,7 +214,7 @@ function buildResponse ({ purchased, preference, items }, ownsAlready, language)
 // If item is already purchased -> equip it
 // Otherwise unlock it
 // @TODO refactor and take as parameter the set name, for single items use the buy ops
-export default function unlock (user, req = {}, analytics) {
+export default async function unlock (user, req = {}) {
   const path = get(req.query, 'path');
 
   if (!path) {
@@ -221,6 +231,13 @@ export default function unlock (user, req = {}, analytics) {
   // We take the first path and use it to get the set,
   // The passed paths are not used anymore after this point for full sets
   const { set, items, paths } = getSet(setType, firstPath, req);
+
+  if (isBackground && !alreadyUnlocked(user, setType, path)) {
+    const matchers = getScheduleMatchingGroup('backgrounds');
+    if (!matchers.match(set.key)) {
+      throw new NotAuthorized(i18n.t('notAvailable', req.language));
+    }
+  }
 
   let cost;
   let unlockedAlready = false;
@@ -250,9 +267,10 @@ export default function unlock (user, req = {}, analytics) {
       return invalidSet(req);
     }
 
-    cost = getIndividualItemPrice(setType, item, req);
-
     unlockedAlready = alreadyUnlocked(user, setType, firstPath);
+    if (!unlockedAlready) {
+      cost = getIndividualItemPrice(setType, item, req);
+    }
 
     // Since only an item is being unlocked here,
     // remove all the other items from the set
@@ -276,14 +294,16 @@ export default function unlock (user, req = {}, analytics) {
   if (isFullSet) {
     paths.forEach(pathPart => purchaseItem(pathPart, setType, user));
 
-    if (isBackground) {
-      paths.forEach(pathPart => {
+    paths.forEach(pathPart => {
+      if (isBackground) {
         const [key, value] = splitPathItem(pathPart);
         const backgroundContent = content.backgroundsFlat[value];
         const itemInfo = getItemInfo(user, key, backgroundContent);
         removeItemByPath(user, itemInfo.path);
-      });
-    }
+      } else {
+        removeItemByPath(user, path);
+      }
+    });
   } else {
     const [key, value] = splitPathItem(path);
 
@@ -297,24 +317,14 @@ export default function unlock (user, req = {}, analytics) {
         const backgroundContent = content.backgroundsFlat[value];
         const itemInfo = getItemInfo(user, 'background', backgroundContent);
         removeItemByPath(user, itemInfo.path);
+      } else {
+        removeItemByPath(user, path);
       }
     }
   }
 
   if (!unlockedAlready) {
-    user.balance -= cost;
-
-    if (analytics) {
-      analytics.track('buy', {
-        uuid: user._id,
-        itemKey: path,
-        itemType: 'customization',
-        currency: 'Gems',
-        gemCost: cost / 0.25,
-        category: 'behavior',
-        headers: req.headers,
-      });
-    }
+    await updateUserBalance(user, -cost, 'spend', path);
   }
 
   return buildResponse(user, unlockedAlready, req.language);

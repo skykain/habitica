@@ -1,6 +1,7 @@
 import { v4 as generateUUID } from 'uuid';
 import {
   generateUser,
+  generateUsers,
   generateGroup,
   createAndPopulateGroup,
   generateChallenge,
@@ -71,42 +72,18 @@ describe('GET /challenges/:challengeId/members', () => {
     });
   });
 
-  it('works with challenges belonging to public guild', async () => {
-    const leader = await generateUser({ balance: 4 });
-    const group = await generateGroup(leader, { type: 'guild', privacy: 'public', name: generateUUID() });
-    const challenge = await generateChallenge(leader, group);
-    await leader.post(`/challenges/${challenge._id}/join`);
-    const res = await user.get(`/challenges/${challenge._id}/members`);
-    expect(res[0]).to.eql({
-      _id: leader._id,
-      id: leader._id,
-      profile: { name: leader.profile.name },
-      auth: {
-        local: {
-          username: leader.auth.local.username,
-        },
-      },
-      flags: {
-        verifiedUsername: true,
-      },
-    });
-    expect(res[0]).to.have.all.keys(['_id', 'auth', 'flags', 'id', 'profile']);
-    expect(res[0].profile).to.have.all.keys(['name']);
-  });
-
   it('populates only some fields', async () => {
-    const anotherUser = await generateUser({ balance: 3 });
-    const group = await generateGroup(anotherUser, { type: 'guild', privacy: 'public', name: generateUUID() });
-    const challenge = await generateChallenge(anotherUser, group);
-    await anotherUser.post(`/challenges/${challenge._id}/join`);
+    const group = await generateGroup(user, { type: 'party', privacy: 'private', name: generateUUID() });
+    const challenge = await generateChallenge(user, group);
+    await user.post(`/challenges/${challenge._id}/join`);
     const res = await user.get(`/challenges/${challenge._id}/members`);
     expect(res[0]).to.eql({
-      _id: anotherUser._id,
-      id: anotherUser._id,
-      profile: { name: anotherUser.profile.name },
+      _id: user._id,
+      id: user._id,
+      profile: { name: user.profile.name },
       auth: {
         local: {
-          username: anotherUser.auth.local.username,
+          username: user.auth.local.username,
         },
       },
       flags: {
@@ -122,11 +99,7 @@ describe('GET /challenges/:challengeId/members', () => {
     const challenge = await generateChallenge(user, group);
     await user.post(`/challenges/${challenge._id}/join`);
 
-    const usersToGenerate = [];
-    for (let i = 0; i < 31; i += 1) {
-      usersToGenerate.push(generateUser({ challenges: [challenge._id] }));
-    }
-    await Promise.all(usersToGenerate);
+    await generateUsers(31, { challenges: [challenge._id] });
 
     const res = await user.get(`/challenges/${challenge._id}/members`);
     expect(res.length).to.equal(30);
@@ -177,11 +150,7 @@ describe('GET /challenges/:challengeId/members', () => {
     const challenge = await generateChallenge(user, group);
     await user.post(`/challenges/${challenge._id}/join`);
 
-    const usersToGenerate = [];
-    for (let i = 0; i < 62; i += 1) {
-      usersToGenerate.push(generateUser({ challenges: [challenge._id] }));
-    }
-    await Promise.all(usersToGenerate);
+    await generateUsers(62, { challenges: [challenge._id] });
 
     let res = await user.get(`/challenges/${challenge._id}/members?limit=57`);
     expect(res.length).to.equal(57);
@@ -204,12 +173,8 @@ describe('GET /challenges/:challengeId/members', () => {
     const challenge = await generateChallenge(user, group);
     await user.post(`/challenges/${challenge._id}/join`);
 
-    const usersToGenerate = [];
-    for (let i = 0; i < 57; i += 1) {
-      usersToGenerate.push(generateUser({ challenges: [challenge._id] }));
-    }
-    // Group has 59 members (1 is the leader)
-    const generatedUsers = await Promise.all(usersToGenerate);
+    // Challenge has 58 members (1 is the leader)
+    const generatedUsers = await generateUsers(57, { challenges: [challenge._id] });
     const expectedIds = [user._id].concat(generatedUsers.map(generatedUser => generatedUser._id));
 
     const res = await user.get(`/challenges/${challenge._id}/members`);

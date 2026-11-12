@@ -21,10 +21,13 @@
         <slot
           name="itemBadge"
           :item="item"
-        ></slot><span
+        ></slot><Sprite
           class="item-content"
-          :class="itemContentClass"
-        ></span>
+          :class="{ 'pet-item':
+            ['eggs', 'premiumHatchingPotion', 'hatchingPotions', 'food'].includes(item.pinType)
+          }"
+          :image-name="itemContentClass"
+        />
       </div><span
         v-if="label"
         class="item-label"
@@ -44,10 +47,20 @@
   </div>
 </template>
 
+<style lang="scss" scoped>
+  .pet-item {
+    top: -25px;
+  }
+</style>
+
 <script>
 import { v4 as uuid } from 'uuid';
+import Sprite from '@/components/ui/sprite';
 
 export default {
+  components: {
+    Sprite,
+  },
   props: {
     item: {
       type: Object,

@@ -2,8 +2,10 @@ import { authWithHeaders } from '../../middlewares/auth';
 import { model as Webhook } from '../../models/webhook';
 import { removeFromArray } from '../../libs/collectionManipulators';
 import { NotFound, BadRequest } from '../../libs/errors';
+import shared from '../../../common';
 
 const api = {};
+const { MAX_WEBHOOKS } = shared.constants;
 
 /**
  * @apiDefine Webhook Webhook
@@ -43,7 +45,7 @@ const api = {};
  * @apiParamExample {json} Task Activity Example
  *   {
  *     "enabled": true, // default
- *     "url": "http://some-webhook-url.com",
+ *     "url": "https://some-webhook-url.com",
  *     "label": "My Webhook",
  *     "type": "taskActivity", // default
  *     "options": {
@@ -56,7 +58,7 @@ const api = {};
  * @apiParamExample {json} Group Chat Received Example
  *   {
  *     "enabled": true,
- *     "url": "http://some-webhook-url.com",
+ *     "url": "https://some-webhook-url.com",
  *     "label": "My Chat Webhook",
  *     "type": "groupChatReceived",
  *     "options": {
@@ -66,7 +68,7 @@ const api = {};
  * @apiParamExample {json} User Activity Example
  *   {
  *     "enabled": true,
- *     "url": "http://some-webhook-url.com",
+ *     "url": "https://some-webhook-url.com",
  *     "label": "My Activity Webhook",
  *     "type": "userActivity",
  *     "options": { // set at least one to true
@@ -78,7 +80,7 @@ const api = {};
  * @apiParamExample {json} Quest Activity Example
  *   {
  *     "enabled": true,
- *     "url": "http://some-webhook-url.com",
+ *     "url": "https://some-webhook-url.com",
  *     "label": "My Quest Webhook",
  *     "type": "questActivity",
  *     "options": { // set at least one to true
@@ -89,7 +91,7 @@ const api = {};
  *   }
  * @apiParamExample {json} Minimal Example
  *   {
- *     "url": "http://some-webhook-url.com"
+ *     "url": "https://some-webhook-url.com"
  *   }
  *
  * @apiSuccess (201) {Object} data The created webhook
@@ -108,6 +110,9 @@ api.addWebhook = {
   url: '/user/webhook',
   async handler (req, res) {
     const { user } = res.locals;
+    if (user.webhooks.length >= MAX_WEBHOOKS) {
+      throw new BadRequest(res.t('tooManyWebhooks', { limit: MAX_WEBHOOKS }));
+    }
     const webhook = new Webhook(Webhook.sanitize(req.body));
 
     const existingWebhook = user.webhooks.find(hook => hook.id === webhook.id);

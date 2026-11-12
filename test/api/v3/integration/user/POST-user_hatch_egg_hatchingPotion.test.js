@@ -3,7 +3,6 @@ import {
   generateUser,
   translate as t,
   server,
-  sleep,
 } from '../../../../helpers/api-integration/v3';
 
 describe('POST /user/hatch/:egg/:hatchingPotion', () => {
@@ -16,7 +15,7 @@ describe('POST /user/hatch/:egg/:hatchingPotion', () => {
   // More tests in common code unit tests
 
   it('hatch a new pet', async () => {
-    await user.update({
+    await user.updateOne({
       'items.eggs.Wolf': 1,
       'items.hatchingPotions.Base': 1,
     });
@@ -54,13 +53,13 @@ describe('POST /user/hatch/:egg/:hatchingPotion', () => {
         },
       });
 
-      await user.update({
+      await user.updateOne({
         'items.eggs.Wolf': 1,
         'items.hatchingPotions.Base': 1,
       });
       const res = await user.post('/user/hatch/Wolf/Base');
 
-      await sleep();
+      await server.waitForWebhookData(uuid);
 
       const body = server.getWebhookData(uuid);
 

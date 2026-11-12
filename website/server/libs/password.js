@@ -2,10 +2,11 @@
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import moment from 'moment';
+import nconf from 'nconf';
 import { decrypt } from './encryption';
 import { model as User } from '../models/user';
 
-const BCRYPT_SALT_ROUNDS = 10;
+const BCRYPT_SALT_ROUNDS = nconf.get('IS_TEST') ? 4 : 10;
 
 // Hash a plain text password
 export function bcryptHash (passwordToHash) {
@@ -87,9 +88,8 @@ export async function validatePasswordResetCodeAndFindUser (code) {
 
   if (isCodeValid) {
     user = await User.findById(userId).exec();
-
-    // check if user is found and if it's an email & password account
-    if (!user || !user.auth || !user.auth.local || !user.auth.local.email) {
+    // check if user is found
+    if (!user) {
       isCodeValid = false;
     } else if (code !== user.auth.local.passwordResetCode) {
       // Make sure only the last code can be used

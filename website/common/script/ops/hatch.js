@@ -3,7 +3,6 @@ import forEach from 'lodash/forEach';
 import get from 'lodash/get';
 import keys from 'lodash/keys';
 import upperFirst from 'lodash/upperFirst';
-import moment from 'moment';
 import i18n from '../i18n';
 import content from '../content/index';
 import {
@@ -11,10 +10,10 @@ import {
   NotAuthorized,
   NotFound,
 } from '../libs/errors';
-import errorMessage from '../libs/errorMessage';
+import { errorMessage } from '../libs/errorMessage';
 import { checkOnboardingStatus } from '../libs/onboarding';
 
-export default function hatch (user, req = {}, analytics) {
+export default function hatch (user, req = {}) {
   const egg = get(req, 'params.egg');
   const hatchingPotion = get(req, 'params.hatchingPotion');
 
@@ -56,7 +55,7 @@ export default function hatch (user, req = {}, analytics) {
 
   if (!user.achievements.hatchedPet && user.addAchievement) {
     user.addAchievement('hatchedPet');
-    checkOnboardingStatus(user, req, analytics);
+    checkOnboardingStatus(user, req);
   }
 
   if (content.dropEggs[egg]) {
@@ -73,7 +72,8 @@ export default function hatch (user, req = {}, analytics) {
             const achievementString = `achievement${upperFirst(achievement.petAchievement)}`;
             user.addNotification(achievement.petNotificationType, {
               achievement: achievement.petAchievement,
-              message: `${i18n.t('modalAchievement')} ${i18n.t(achievementString)}`,
+              icon: `achievement-${achievement.petAchievement}`,
+              message: i18n.t(achievementString),
               modalText: i18n.t(`${achievementString}ModalText`),
             });
           }
@@ -85,23 +85,34 @@ export default function hatch (user, req = {}, analytics) {
   if (content.dropHatchingPotions[hatchingPotion]) {
     forEach(content.animalSetAchievements, achievement => {
       if (!user.achievements[achievement.achievementKey]) {
-        if (achievement.type === 'pet') {
+        if (achievement.type === 'pet' || achievement.type === 'petMount') {
           let achieved = true;
           forEach(achievement.species, species => {
             if (!achieved) return;
             const petIndex = findIndex(
               keys(content.dropHatchingPotions),
-              color => !user.items.pets[`${species}-${color}`],
+              color => !user.items.pets[`${species}-${color}`] || user.items.pets[`${species}-${color}`] === -1,
             );
             if (petIndex !== -1) achieved = false;
           });
+          if (achievement.type === 'petMount') {
+            forEach(achievement.species, species => {
+              if (!achieved) return;
+              const mountIndex = findIndex(
+                keys(content.dropHatchingPotions),
+                color => !user.items.mounts[`${species}-${color}`],
+              );
+              if (mountIndex !== -1) achieved = false;
+            });
+          }
           if (achieved) {
             user.achievements[achievement.achievementKey] = true;
             if (user.addNotification) {
               const achievementString = `achievement${upperFirst(achievement.achievementKey)}`;
               user.addNotification(achievement.notificationType, {
                 achievement: achievement.achievementKey,
-                message: `${i18n.t('modalAchievement')} ${i18n.t(achievementString)}`,
+                icon: `achievement-${achievement.achievementKey}`,
+                message: i18n.t(achievementString),
                 modalText: i18n.t(`${achievementString}ModalText`),
               });
             }
@@ -111,12 +122,31 @@ export default function hatch (user, req = {}, analytics) {
     });
   }
 
-  if (analytics && moment().diff(user.auth.timestamps.created, 'days') < 7) {
-    analytics.track('pet hatch', {
-      uuid: user._id,
-      petKey: pet,
-      category: 'behavior',
-      headers: req.headers,
+  if (content.dropEggs[egg] || content.questEggs[egg]) {
+    forEach(content.petSetCompleteAchievs, achievement => {
+      if (hatchingPotion !== achievement.color) return;
+      if (!user.achievements[achievement.petAchievement]) {
+        const dropPetIndex = findIndex(
+          keys(content.dropEggs),
+          animal => !user.items.pets[`${animal}-${achievement.color}`] || user.items.pets[`${animal}-${achievement.color}`] <= 0,
+        );
+        const questPetIndex = findIndex(
+          keys(content.questEggs),
+          animal => !user.items.pets[`${animal}-${achievement.color}`] || user.items.pets[`${animal}-${achievement.color}`] <= 0,
+        );
+        if (dropPetIndex === -1 && questPetIndex === -1) {
+          user.achievements[achievement.petAchievement] = true;
+          if (user.addNotification) {
+            const achievementString = `achievement${upperFirst(achievement.petAchievement)}`;
+            user.addNotification(achievement.petNotificationType, {
+              achievement: achievement.petAchievement,
+              icon: `achievement-${achievement.petAchievement}`,
+              message: i18n.t(achievementString),
+              modalText: i18n.t(`${achievementString}ModalText`),
+            });
+          }
+        }
+      }
     });
   }
 

@@ -5,37 +5,49 @@ import validator from 'validator';
 import baseModel from '../libs/baseModel';
 
 const NOTIFICATION_TYPES = [
-  'DROPS_ENABLED', // unused
-  'REBIRTH_ENABLED',
-  'WON_CHALLENGE',
-  'STREAK_ACHIEVEMENT',
-  'ULTIMATE_GEAR_ACHIEVEMENT',
-  'REBIRTH_ACHIEVEMENT',
-  'NEW_CONTRIBUTOR_LEVEL',
+  // general notifications
+  'CARD_RECEIVED',
   'CRON',
+  'DROP_CAP_REACHED',
+  'DROPS_ENABLED', // unused
+  'FIRST_DROPS',
+  'GIFT_ONE_GET_ONE',
+  'GROUP_INVITE_ACCEPTED',
   'GROUP_TASK_APPROVAL',
   'GROUP_TASK_APPROVED',
   'GROUP_TASK_ASSIGNED',
   'GROUP_TASK_CLAIMED',
   'GROUP_TASK_NEEDS_WORK',
-  'LOGIN_INCENTIVE',
-  'GROUP_INVITE_ACCEPTED',
-  'SCORED_TASK',
-  'BOSS_DAMAGE', // Not used currently but kept to avoid validation errors
-  'GIFT_ONE_GET_ONE',
   'GUILD_PROMPT',
-  'GUILD_JOINED_ACHIEVEMENT',
-  'CHALLENGE_JOINED_ACHIEVEMENT',
-  'INVITED_FRIEND_ACHIEVEMENT',
-  'CARD_RECEIVED',
-  'NEW_MYSTERY_ITEMS',
-  'UNALLOCATED_STATS_POINTS',
-  'NEW_INBOX_MESSAGE',
-  'NEW_STUFF',
+  'LEVELED_UP', // not in use
+  'LOGIN_INCENTIVE',
   'NEW_CHAT_MESSAGE',
-  'LEVELED_UP', // Not in use
-  'FIRST_DROPS',
+  'NEW_CONTRIBUTOR_LEVEL',
+  'NEW_INBOX_MESSAGE',
+  'NEW_MYSTERY_ITEMS',
+  'NEW_STUFF',
   'ONBOARDING_COMPLETE',
+  'REBIRTH_ENABLED',
+  'SCORED_TASK',
+  'UNALLOCATED_STATS_POINTS',
+  'WON_CHALLENGE',
+  'ITEM_RECEIVED', // notify user when they've got goodies via migration
+  // achievement notifications
+  'ACHIEVEMENT', // generic achievement notification, details inside `notification.data`
+  'CHALLENGE_JOINED_ACHIEVEMENT',
+  'GUILD_JOINED_ACHIEVEMENT',
+  'ACHIEVEMENT_PARTY_ON',
+  'ACHIEVEMENT_PARTY_UP',
+  'INVITED_FRIEND_ACHIEVEMENT',
+  'REBIRTH_ACHIEVEMENT',
+  // Deprecated notification types. Can be removed once old data is cleaned out
+  'ACHIEVEMENT_ANIMAL_SET',
+  'ACHIEVEMENT_MOUNT_COLOR',
+  'ACHIEVEMENT_PET_COLOR',
+  'ACHIEVEMENT_PET_SET_COMPLETE',
+  'ACHIEVEMENT_QUESTS',
+  'ACHIEVEMENT_STABLE',
+  'BOSS_DAMAGE',
   'ACHIEVEMENT_ALL_YOUR_BASE',
   'ACHIEVEMENT_BACK_TO_BASICS',
   'ACHIEVEMENT_JUST_ADD_WATER',
@@ -70,8 +82,10 @@ const NOTIFICATION_TYPES = [
   'ACHIEVEMENT_DOMESTICATED',
   'ACHIEVEMENT_SHADY_CUSTOMER',
   'ACHIEVEMENT_SHADE_OF_IT_ALL',
-  'ACHIEVEMENT', // generic achievement notification, details inside `notification.data`
-  'DROP_CAP_REACHED',
+  'ACHIEVEMENT_ZODIAC_ZOOKEEPER',
+  'ACHIEVEMENT_BIRDS_OF_A_FEATHER',
+  'STREAK_ACHIEVEMENT',
+  'ULTIMATE_GEAR_ACHIEVEMENT',
 ];
 
 const { Schema } = mongoose;
@@ -125,6 +139,16 @@ schema.statics.cleanupCorruptData = function cleanupCorruptNotificationsData (no
   filteredNotifications = _.uniqWith(filteredNotifications, (val, otherVal) => {
     if (val.type === 'NEW_CHAT_MESSAGE' && val.type === otherVal.type) {
       return val.data.group.id === otherVal.data.group.id;
+    }
+    return false;
+  });
+
+  // Remove duplicate STREAK_ACHIEVEMENT notifications
+  // Deduplicates by keeping only the first occurrence of STREAK_ACHIEVEMENT notification
+  filteredNotifications = _.uniqWith(filteredNotifications, (val, otherVal) => {
+    if (val.type === 'STREAK_ACHIEVEMENT' && val.type === otherVal.type) {
+      // If both are streak achievements, they are duplicates
+      return true;
     }
     return false;
   });

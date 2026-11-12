@@ -1,22 +1,28 @@
 import '../../website/server/libs/i18n';
-import mongoose from 'mongoose';
 import defaultsDeep from 'lodash/defaultsDeep';
 import moment from 'moment';
 import { model as User } from '../../website/server/models/user';
 import { model as Group } from '../../website/server/models/group';
 import { model as Challenge } from '../../website/server/models/challenge';
-import mongo from './mongo'; // eslint-disable-line
+import { clearDatabase } from './mongo';
 import i18n from '../../website/common/script/i18n';
 import * as Tasks from '../../website/server/models/task';
 
 export { translationCheck } from './translate';
 
-afterEach(done => {
+afterEach(() => {
   sandbox.restore();
-  mongoose.connection.dropDatabase(done);
+  return clearDatabase();
 });
 
 export { sleep } from './sleep';
+export { waitFor } from './wait-for';
+
+// Fakes only Date, faking all timers (the sinon default) also stops
+// process.nextTick and queueMicrotask, which blocks database calls
+export function useFakeDate (now) {
+  return sinon.useFakeTimers({ now, toFake: ['Date'] });
+}
 
 export function generateUser (options = {}) {
   return new User(options);
@@ -40,6 +46,7 @@ export function generateRes (options = {}) {
     redirect: sandbox.stub(),
     render: sandbox.stub(),
     send: sandbox.stub(),
+    sendFile: sandbox.stub(),
     sendStatus: sandbox.stub().returnsThis(),
     set: sandbox.stub(),
     status: sandbox.stub().returnsThis(),
@@ -59,7 +66,17 @@ export function generateReq (options = {}) {
     header (header) {
       return this.headers[header];
     },
+    listeners: {},
     session: {},
+    on (key, func) {
+      if (!this.listeners[key]) {
+        this.listeners[key] = [];
+      }
+      this.listeners[key].push(func);
+    },
+    end () {
+      this.listeners.close.forEach(func => func());
+    },
   };
 
   const req = defaultsDeep(options, defaultReq);

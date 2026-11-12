@@ -4,20 +4,16 @@
     size="lg"
     :hide-header="true"
     :hide-footer="true"
-    no-close-on-esc
-    no-close-on-backdrop
     @shown="onShow()"
   >
     <div class="modal-body">
       <news-content ref="newsContent" />
+      <close-x
+        @close="dismissAlert()"
+      />
     </div>
 
     <div class="modal-footer d-flex align-items-center pb-0">
-      <a
-        href="https://habitica.fandom.com/wiki/Whats_New"
-        target="_blank"
-        class="mr-auto"
-      >{{ $t('newsArchive') }}</a>
       <button
         class="btn btn-secondary ml-auto"
         @click="tellMeLater()"
@@ -35,11 +31,17 @@
 </template>
 
 <script>
+import { mapState } from '@/libs/store';
 import newsContent from './newsContent';
+import closeX from '../ui/closeX.vue';
 
 export default {
   components: {
+    closeX,
     newsContent,
+  },
+  computed: {
+    ...mapState({ user: 'user.data' }),
   },
   methods: {
     async onShow () {

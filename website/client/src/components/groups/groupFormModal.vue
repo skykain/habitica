@@ -10,11 +10,12 @@
         <label>
           <strong v-once>{{ $t('name') }} *</strong>
         </label>
-        <b-form-input
+        <input
+          class="form-control"
           v-model="workingGroup.name"
           type="text"
           :placeholder="isParty ? $t('newPartyPlaceholder') : $t('newGuildPlaceholder')"
-        />
+        >
       </div>
       <div class="form-group">
         <label>
@@ -159,7 +160,7 @@ label.custom-control-label(v-once) {{ $t('allowGuildInvitationsFromNonMembers') 
           <strong v-else>{{ $t('groupDescription') }} *</strong>
         </label>
         <a
-          v-markdown="$t('markdownFormattingHelp')"
+          v-markdown="$t('markdownFormattingHelp', { markdownLink })"
           class="float-right"
         ></a>
         <textarea
@@ -213,7 +214,7 @@ label.custom-control-label(v-once) {{ $t('allowGuildInvitationsFromNonMembers') 
           <!-- eslint-disable vue/no-use-v-if-with-v-for -->
           <div
             v-for="group in categoryOptions"
-            v-if="group.key !== 'habitica_official' || user.contributor.admin"
+            v-if="group.key !== 'habitica_official' || hasPermission(user, 'challengeAdmin')"
             :key="group.key"
             class="form-check"
           >
@@ -312,7 +313,7 @@ label.custom-control-label(v-once) {{ $t('allowGuildInvitationsFromNonMembers') 
 </template>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .custom-control-input {
     z-index: 1 !important;
@@ -372,13 +373,14 @@ label.custom-control-label(v-once) {{ $t('allowGuildInvitationsFromNonMembers') 
 </style>
 
 <script>
-import { mapState } from '@/libs/store';
+import { MAX_SUMMARY_SIZE_FOR_GUILDS } from '@/../../common/script/constants';
+import CategoryOptions from '@/../../common/script/content/categoryOptions';
 import toggleSwitch from '@/components/ui/toggleSwitch';
 import markdownDirective from '@/directives/markdown';
-import gemIcon from '@/assets/svg/gem.svg';
-import informationIcon from '@/assets/svg/information.svg';
+import gemIcon from '@/assets/svg/gem.svg?raw';
+import informationIcon from '@/assets/svg/information.svg?raw';
 
-import { MAX_SUMMARY_SIZE_FOR_GUILDS } from '@/../../common/script/constants';
+import { userStateMixin } from '../../mixins/userState';
 
 // @TODO: Not sure the best way to pass party creating status
 // Since we need the modal in the header, passing props doesn't work
@@ -393,6 +395,7 @@ export default {
   directives: {
     markdown: markdownDirective,
   },
+  mixins: [userStateMixin],
   data () {
     const data = {
       workingGroup: {
@@ -409,64 +412,7 @@ export default {
         allowGuildInvitationsFromNonMembers: true,
         bannedWordsAllowed: null,
       },
-      categoryOptions: [
-        {
-          label: 'habitica_official',
-          key: 'habitica_official',
-        },
-        {
-          label: 'academics',
-          key: 'academics',
-        },
-        {
-          label: 'advocacy_causes',
-          key: 'advocacy_causes',
-        },
-        {
-          label: 'creativity',
-          key: 'creativity',
-        },
-        {
-          label: 'entertainment',
-          key: 'entertainment',
-        },
-        {
-          label: 'finance',
-          key: 'finance',
-        },
-        {
-          label: 'health_fitness',
-          key: 'health_fitness',
-        },
-        {
-          label: 'hobbies_occupations',
-          key: 'hobbies_occupations',
-        },
-        {
-          label: 'location_based',
-          key: 'location_based',
-        },
-        {
-          label: 'mental_health',
-          key: 'mental_health',
-        },
-        {
-          label: 'getting_organized',
-          key: 'getting_organized',
-        },
-        {
-          label: 'recovery_support_groups',
-          key: 'recovery_support_groups',
-        },
-        {
-          label: 'spirituality',
-          key: 'spirituality',
-        },
-        {
-          label: 'time_management',
-          key: 'time_management',
-        },
-      ],
+      categoryOptions: CategoryOptions,
       showCategorySelect: false,
       members: [],
       inviteMembers: false,
@@ -475,6 +421,7 @@ export default {
         type: '',
       },
       membersToInvite: [],
+      markdownLink: 'https://github.com/HabitRPG/habitica/wiki/Markdown-in-Habitica',
     };
 
     const hashedCategories = {};
@@ -491,7 +438,6 @@ export default {
     return data;
   },
   computed: {
-    ...mapState({ user: 'user.data' }),
     editingGroup () {
       return this.$store.state.editingGroup;
     },
@@ -512,7 +458,7 @@ export default {
       return this.workingGroup.type === 'party';
     },
     isAdmin () {
-      return Boolean(this.user.contributor.admin);
+      return Boolean(this.hasPermission(this.user, 'moderator'));
     },
   },
   watch: {

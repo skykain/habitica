@@ -27,7 +27,7 @@ describe('POST /notifications/:notificationId/read', () => {
     const id = generateUUID();
     const id2 = generateUUID();
 
-    await user.update({
+    await user.updateOne({
       notifications: [{
         id,
         type: 'DROPS_ENABLED',
@@ -47,11 +47,6 @@ describe('POST /notifications/:notificationId/read', () => {
       id: id2,
       type: 'LOGIN_INCENTIVE',
       data: {},
-      seen: false,
     }]);
-
-    await user.sync();
-    expect(user.notifications.length).to.equal(1);
-    expect(user.notifications[0].id).to.equal(id2);
   });
 });

@@ -1,25 +1,24 @@
 /* eslint-disable max-classes-per-file */
-import _merge from 'lodash/merge';
-import _get from 'lodash/get';
+import get from 'lodash/get';
 import i18n from '../../i18n';
 import {
   NotAuthorized,
   NotImplementedError,
   BadRequest,
 } from '../../libs/errors';
+import updateUserBalance from '../updateUserBalance';
+import updateUserHourglasses from '../updateUserHourglasses';
 
 export class AbstractBuyOperation {
   /**
    * @param {User} user - the User-Object
    * @param {Request} req - the Request-Object
-   * @param {analytics} analytics
    */
-  constructor (user, req, analytics) {
+  constructor (user, req) {
     this.user = user;
     this.req = req || {};
-    this.analytics = analytics;
 
-    const quantity = _get(req, 'quantity');
+    const quantity = get(req, 'quantity');
 
     this.quantity = quantity ? Number(quantity) : 1;
     if (this.quantity < 1 || !Number.isInteger(this.quantity)) throw new BadRequest(this.i18n('invalidQuantity'));
@@ -80,48 +79,20 @@ export class AbstractBuyOperation {
     throw new NotImplementedError('extractAndValidateParams');
   }
 
-  executeChanges () { // eslint-disable-line class-methods-use-this
+  async executeChanges () { // eslint-disable-line class-methods-use-this
     throw new NotImplementedError('executeChanges');
   }
 
-  analyticsData () { // eslint-disable-line class-methods-use-this
-    throw new NotImplementedError('sendToAnalytics');
-  }
-
-  purchase () {
+  async purchase () {
     if (!this.multiplePurchaseAllowed() && this.quantity > 1) {
       throw new NotAuthorized(this.i18n('messageNotAbleToBuyInBulk'));
     }
 
     this.extractAndValidateParams(this.user, this.req);
 
-    const resultObj = this.executeChanges(this.user, this.item, this.req, this.analytics);
-
-    if (this.analytics) {
-      this.sendToAnalytics(this.analyticsData());
-    }
+    const resultObj = await this.executeChanges(this.user, this.item, this.req);
 
     return resultObj;
-  }
-
-  analyticsLabel () { // eslint-disable-line class-methods-use-this
-    return 'buy';
-  }
-
-  sendToAnalytics (additionalData = {}) {
-    // spread-operator produces an "unexpected token" error
-    const analyticsData = _merge(additionalData, {
-      // ...additionalData,
-      uuid: this.user._id,
-      category: 'behavior',
-      headers: this.req.headers,
-    });
-
-    if (this.multiplePurchaseAllowed()) {
-      analyticsData.quantityPurchased = this.quantity;
-    }
-
-    this.analytics.track(this.analyticsLabel(), analyticsData);
   }
 }
 
@@ -141,19 +112,10 @@ export class AbstractGoldItemOperation extends AbstractBuyOperation {
     }
   }
 
-  subtractCurrency (user, item) {
+  async subtractCurrency (user, item) {
     const itemValue = this.getItemValue(item);
 
     user.stats.gp -= itemValue * this.quantity;
-  }
-
-  analyticsData () {
-    return {
-      itemKey: this.getItemKey(this.item),
-      itemType: this.getItemType(this.item),
-      currency: 'Gold',
-      goldCost: this.getItemValue(this.item),
-    };
   }
 }
 
@@ -171,19 +133,10 @@ export class AbstractGemItemOperation extends AbstractBuyOperation {
     }
   }
 
-  subtractCurrency (user, item) {
+  async subtractCurrency (user, item) {
     const itemValue = this.getItemValue(item);
 
-    user.balance -= itemValue * this.quantity;
-  }
-
-  analyticsData () {
-    return {
-      itemKey: this.getItemKey(this.item),
-      itemType: this.getItemType(this.item),
-      currency: 'Gems',
-      gemCost: this.getItemValue(this.item) * 4,
-    };
+    await updateUserBalance(user, -(itemValue * this.quantity), 'spend', item.key, item.text());
   }
 }
 
@@ -196,14 +149,7 @@ export class AbstractHourglassItemOperation extends AbstractBuyOperation {
     }
   }
 
-  subtractCurrency (user) { // eslint-disable-line class-methods-use-this
-    user.purchased.plan.consecutive.trinkets -= 1;
-  }
-
-  analyticsData () {
-    return {
-      itemKey: this.item.key,
-      currency: 'Hourglass',
-    };
+  async subtractCurrency (user, item) { // eslint-disable-line class-methods-use-this
+    await updateUserHourglasses(user, -1, 'spend', item.key);
   }
 }

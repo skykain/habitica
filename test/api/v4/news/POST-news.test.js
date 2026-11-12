@@ -1,7 +1,6 @@
 import moment from 'moment';
 import {
   generateUser,
-  sleep,
 } from '../../../helpers/api-integration/v4';
 import { model as NewsPost } from '../../../../website/server/models/newsPost';
 
@@ -16,16 +15,16 @@ describe('POST /news', () => {
   };
   beforeEach(async () => {
     user = await generateUser({
-      'contributor.newsPoster': true,
+      'permissions.news': true,
     });
   });
 
   it('disallows access to non-admins', async () => {
-    const nonAdminUser = await generateUser({ 'contributor.newsPoster': false });
+    const nonAdminUser = await generateUser({ 'permissions.news': false });
     await expect(nonAdminUser.post('/news')).to.eventually.be.rejected.and.eql({
       code: 401,
       error: 'NotAuthorized',
-      message: 'You don\'t have news poster access.',
+      message: 'You don\'t have the required privileges.',
     });
   });
 
@@ -45,7 +44,7 @@ describe('POST /news', () => {
 
   context('calls updateLastNewsPost', () => {
     beforeEach(async () => {
-      await NewsPost.remove({ });
+      await NewsPost.deleteMany({ });
     });
 
     afterEach(async () => {
@@ -56,21 +55,18 @@ describe('POST /news', () => {
     it('new post is published and the most recent one', async () => {
       newsPost.publishDate = new Date();
       const newPost = await user.post('/news', newsPost);
-      await sleep(0.05);
       expect(NewsPost.lastNewsPost()._id).to.equal(newPost._id);
     });
 
     it('new post is not published', async () => {
       newsPost.published = false;
       const newPost = await user.post('/news', newsPost);
-      await sleep(0.05);
       expect(NewsPost.lastNewsPost()._id).to.not.equal(newPost._id);
     });
 
     it('new post is published but in the future', async () => {
       newsPost.publishDate = moment().add({ days: 1 }).toDate();
       const newPost = await user.post('/news', newsPost);
-      await sleep(0.05);
       expect(NewsPost.lastNewsPost()._id).to.not.equal(newPost._id);
     });
 
@@ -78,7 +74,6 @@ describe('POST /news', () => {
       const oldPost = await user.post('/news', newsPost);
       newsPost.publishDate = moment().subtract({ days: 1 }).toDate();
       await user.post('/news', newsPost);
-      await sleep(0.05);
       expect(NewsPost.lastNewsPost()._id).to.equal(oldPost._id);
     });
   });

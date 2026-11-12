@@ -22,10 +22,11 @@ export async function sendChatPushNotifications (user, group, message, mentions,
     'party._id': group._id,
     _id: { $ne: user._id },
   })
+    .lean()
     .select('preferences.pushNotifications preferences.language profile.name pushDevices auth.local.username')
     .exec();
 
-  members.forEach(member => {
+  members.forEach(async member => {
     if (member.preferences.pushNotifications.partyActivity !== false) {
       if (mentions && mentions.includes(`@${member.auth.local.username}`) && member.preferences.pushNotifications.mentionParty !== false) {
         return;
@@ -33,7 +34,7 @@ export async function sendChatPushNotifications (user, group, message, mentions,
 
       if (!message.unformattedText) return;
 
-      sendPushNotification(
+      await sendPushNotification(
         member,
         {
           title: translate('groupActivityNotificationTitle', { user: message.user, group: group.name }, member.preferences.language),

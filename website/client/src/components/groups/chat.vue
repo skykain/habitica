@@ -8,7 +8,7 @@
         {{ label }}
       </h3>
       <div
-        v-markdown="$t('markdownFormattingHelp')"
+        v-markdown="$t('markdownFormattingHelp', { markdownLink })"
         class="float-right"
       ></div>
       <div
@@ -16,19 +16,19 @@
         class="row"
       >
         <textarea
-          ref="user-entry"
+          :ref="setTextbox"
           v-model="newMessage"
           dir="auto"
           :placeholder="placeholder"
           :class="{'user-entry': newMessage}"
           :maxlength="MAX_MESSAGE_LENGTH"
-          @keydown="updateCarretPosition"
+          @keydown="autoCompleteMixinUpdateCarretPosition"
           @keyup.ctrl.enter="sendMessageShortcut()"
-          @keydown.tab="handleTab($event)"
-          @keydown.up="selectPreviousAutocomplete($event)"
-          @keydown.down="selectNextAutocomplete($event)"
-          @keydown.enter="selectAutocomplete($event)"
-          @keydown.esc="handleEscape($event)"
+          @keydown.tab="autoCompleteMixinHandleTab($event)"
+          @keydown.up="autoCompleteMixinSelectPreviousAutocomplete($event)"
+          @keydown.down="autoCompleteMixinSelectNextAutocomplete($event)"
+          @keypress.enter="autoCompleteMixinSelectAutocomplete($event)"
+          @keydown.esc="autoCompleteMixinHandleEscape($event)"
           @paste="disableMessageSendShortcut()"
         ></textarea>
         <span>{{ currentLength }} / {{ MAX_MESSAGE_LENGTH }}</span>
@@ -36,9 +36,17 @@
           ref="autocomplete"
           :text="newMessage"
           :textbox="textbox"
-          :coords="coords"
-          :caret-position="caretPosition"
+          :coords="mixinData.autoComplete.coords"
+          :caret-position="mixinData.autoComplete.caretPosition"
           :chat="group.chat"
+          @select="selectedAutocomplete"
+        />
+        <emoji-auto-complete
+          ref="emojiAutocomplete"
+          :text="newMessage"
+          :textbox="textbox"
+          :coords="mixinData.autoComplete.coords"
+          :caret-position="mixinData.autoComplete.caretPosition"
           @select="selectedAutocomplete"
         />
       </div>
@@ -64,6 +72,7 @@
           <button
             class="btn btn-primary send-chat float-right"
             :disabled="!communityGuidelinesAccepted"
+            :class="{ disabled: !communityGuidelinesAccepted }"
             @click="sendMessage()"
           >
             {{ $t('send') }}
@@ -73,7 +82,7 @@
       <slot name="additionRow"></slot>
       <div class="row">
         <div class="hr col-12"></div>
-        <chat-message
+        <chat-messages
           :chat.sync="group.chat"
           :group-type="group.type"
           :group-id="group._id"
@@ -85,14 +94,16 @@
 </template>
 
 <script>
-import debounce from 'lodash/debounce';
+import { MAX_MESSAGE_LENGTH } from '@/../../common/script/constants';
+import externalLinks from '../../mixins/externalLinks';
 
 import autocomplete from '../chat/autoComplete';
+import emojiAutoComplete from '../chat/emojiAutoComplete';
 import communityGuidelines from './communityGuidelines';
-import chatMessage from '../chat/chatMessages';
+import chatMessages from '../chat/chatMessages';
 import { mapState } from '@/libs/store';
 import markdownDirective from '@/directives/markdown';
-import { MAX_MESSAGE_LENGTH } from '@/../../common/script/constants';
+import { autoCompleteHelperMixin } from '@/mixins/autoCompleteHelper';
 
 export default {
   directives: {
@@ -100,25 +111,23 @@ export default {
   },
   components: {
     autocomplete,
+    emojiAutoComplete,
     communityGuidelines,
-    chatMessage,
+    chatMessages,
   },
+  mixins: [externalLinks, autoCompleteHelperMixin],
   props: ['label', 'group', 'placeholder'],
   data () {
     return {
       newMessage: '',
       sending: false,
-      caretPosition: 0,
       chat: {
         submitDisable: false,
         submitTimeout: null,
       },
-      coords: {
-        TOP: 0,
-        LEFT: 0,
-      },
       textbox: null,
       MAX_MESSAGE_LENGTH: MAX_MESSAGE_LENGTH.toString(),
+      markdownLink: 'https://github.com/HabitRPG/habitica/wiki/Markdown-in-Habitica',
     };
   },
   computed: {
@@ -131,37 +140,14 @@ export default {
     },
   },
   mounted () {
-    this.textbox = this.$refs['user-entry'];
+    this.handleExternalLinks();
+  },
+  updated () {
+    this.handleExternalLinks();
   },
   methods: {
-    // https://medium.com/@_jh3y/how-to-where-s-the-caret-getting-the-xy-position-of-the-caret-a24ba372990a
-    getCoord (e, text) {
-      this.caretPosition = text.selectionEnd;
-      const div = document.createElement('div');
-      const span = document.createElement('span');
-      const copyStyle = getComputedStyle(text);
-
-      [].forEach.call(copyStyle, prop => {
-        div.style[prop] = copyStyle[prop];
-      });
-
-      div.style.position = 'absolute';
-      document.body.appendChild(div);
-      div.textContent = text.value.substr(0, this.caretPosition);
-      span.textContent = text.value.substr(this.caretPosition) || '.';
-      div.appendChild(span);
-      this.coords = {
-        TOP: span.offsetTop,
-        LEFT: span.offsetLeft,
-      };
-      document.body.removeChild(div);
-    },
-    updateCarretPosition: debounce(function updateCarretPosition (eventUpdate) {
-      this._updateCarretPosition(eventUpdate);
-    }, 250),
-    _updateCarretPosition (eventUpdate) {
-      const text = eventUpdate.target;
-      this.getCoord(eventUpdate, text);
+    setTextbox (ref) {
+      this.textbox = ref;
     },
     async sendMessageShortcut () {
       // If the user recently pasted in the text field, don't submit
@@ -213,45 +199,6 @@ export default {
       }, 500);
     },
 
-    handleTab (e) {
-      if (this.$refs.autocomplete.searchActive) {
-        e.preventDefault();
-        if (e.shiftKey) {
-          this.$refs.autocomplete.selectPrevious();
-        } else {
-          this.$refs.autocomplete.selectNext();
-        }
-      }
-    },
-
-    handleEscape (e) {
-      if (this.$refs.autocomplete.searchActive) {
-        e.preventDefault();
-        this.$refs.autocomplete.cancel();
-      }
-    },
-
-    selectNextAutocomplete (e) {
-      if (this.$refs.autocomplete.searchActive) {
-        e.preventDefault();
-        this.$refs.autocomplete.selectNext();
-      }
-    },
-
-    selectPreviousAutocomplete (e) {
-      if (this.$refs.autocomplete.searchActive) {
-        e.preventDefault();
-        this.$refs.autocomplete.selectPrevious();
-      }
-    },
-
-    selectAutocomplete (e) {
-      if (this.$refs.autocomplete.searchActive) {
-        e.preventDefault();
-        this.$refs.autocomplete.makeSelection();
-      }
-    },
-
     selectedAutocomplete (newText, newCaret) {
       this.newMessage = newText;
       // Wait for v-modal to update
@@ -260,7 +207,6 @@ export default {
         this.textbox.focus();
       });
     },
-
     fetchRecentMessages () {
       this.$emit('fetchRecentMessages');
     },
@@ -271,10 +217,7 @@ export default {
   beforeRouteUpdate (to, from, next) {
     // Reset chat
     this.newMessage = '';
-    this.coords = {
-      TOP: 0,
-      LEFT: 0,
-    };
+    this.autoCompleteMixinResetCoordsPosition();
 
     next();
   },
@@ -282,8 +225,8 @@ export default {
 </script>
 
 <style scoped lang="scss">
-  @import '~@/assets/scss/colors.scss';
-  @import '~@/assets/scss/variables.scss';
+  @import '@/assets/scss/colors.scss';
+  @import '@/assets/scss/variables.scss';
 
   .chat-actions {
     margin-top: 1em;

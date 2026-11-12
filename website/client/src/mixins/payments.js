@@ -7,9 +7,8 @@ import encodeParams from '@/libs/encodeParams';
 import notificationsMixin from '@/mixins/notifications';
 import { CONSTANTS, setLocalSetting } from '@/libs/userlocalManager';
 
-const { STRIPE_PUB_KEY } = process.env;
+const { STRIPE_PUB_KEY } = import.meta.env;
 
-// const habiticaUrl = `${window.location.protocol}//${window.location.host}`;
 let stripeInstance = null;
 
 export default {
@@ -39,6 +38,13 @@ export default {
       return moment(this.user.purchased.plan.dateTerminated)
         .format(this.user.preferences.dateFormat.toUpperCase());
     },
+    renewalDate () {
+      const renewalDate = moment().add(1, 'months');
+      if (!this.user.preferences || !this.user.preferences.dateFormat) {
+        return renewalDate;
+      }
+      return renewalDate.format(this.user.preferences.dateFormat.toUpperCase());
+    },
   },
   methods: {
     encodeGift (uuid, gift) {
@@ -63,6 +69,8 @@ export default {
         type,
         giftData,
         gemsBlock,
+        sku,
+        g1g1,
       } = data;
       let { url } = data;
 
@@ -71,6 +79,10 @@ export default {
         paymentCompleted: false,
         paymentType: type,
       };
+
+      if (type === 'gift-subscription') {
+        appState.g1g1 = g1g1;
+      }
 
       if (type === 'subscription') {
         appState.subscriptionKey = this.subscriptionPlan || this.subscription.key;
@@ -84,6 +96,11 @@ export default {
       if (type === 'gems') {
         appState.gemsBlock = gemsBlock;
         url += `?gemsBlock=${gemsBlock.key}`;
+      }
+
+      if (type === 'sku') {
+        appState.sku = sku;
+        url += `?sku=${sku}`;
       }
 
       setLocalSetting(CONSTANTS.savedAppStateValues.SAVED_APP_STATE, JSON.stringify(appState));
@@ -122,6 +139,7 @@ export default {
       if (data.group || data.groupToCreate) paymentType = 'groupPlan';
       if (data.gift && data.gift.type === 'gems') paymentType = 'gift-gems';
       if (data.gift && data.gift.type === 'subscription') paymentType = 'gift-subscription';
+      if (data.sku) paymentType = 'sku';
 
       let url = '/stripe/checkout-session';
       const postData = {};
@@ -140,6 +158,8 @@ export default {
       if (data.subscription) postData.sub = sub.key;
       if (data.coupon) postData.coupon = data.coupon;
       if (data.groupId) postData.groupId = data.groupId;
+      if (data.demographics) postData.demographics = data.demographics;
+      if (data.sku) postData.sku = data.sku;
 
       const response = await axios.post(url, postData);
 
@@ -148,6 +168,9 @@ export default {
         paymentCompleted: false,
         paymentType,
       };
+      if (paymentType === 'gift-subscription') {
+        appState.g1g1 = data.g1g1;
+      }
       if (paymentType === 'subscription') {
         appState.subscriptionKey = sub.key;
       } else if (paymentType === 'groupPlan') {
@@ -237,71 +260,6 @@ export default {
       }
       return true;
     },
-    amazonPaymentsInit (data) {
-      if (data.type !== 'single' && data.type !== 'subscription') return;
-
-      if (data.type === 'single') {
-        this.amazonPayments.gemsBlock = data.gemsBlock;
-      }
-
-      if (data.gift) {
-        if (data.gift.gems && data.gift.gems.amount && data.gift.gems.amount <= 0) return;
-        data.gift.uuid = data.giftedTo;
-        this.amazonPayments.giftReceiver = data.receiverName;
-      }
-
-      if (data.subscription) {
-        this.amazonPayments.subscription = data.subscription;
-        this.amazonPayments.coupon = data.coupon;
-      }
-
-      if (data.groupId) {
-        this.amazonPayments.groupId = data.groupId;
-      }
-
-      if (data.group) { // upgrading a group
-        this.amazonPayments.group = data.group;
-      }
-
-      if (data.groupToCreate) { // creating a group
-        this.amazonPayments.groupToCreate = data.groupToCreate;
-      }
-
-      this.amazonPayments.gift = data.gift;
-      this.amazonPayments.type = data.type;
-    },
-    amazonOnError (error) {
-      window.alert(error.getErrorMessage()); // eslint-disable-line no-alert
-      this.reset();
-    },
-    // Make sure the amazon session is reset between different sessions and after each purchase
-    amazonLogout () {
-      if (window.amazon && window.amazon.Login && typeof window.amazon.Login.logout === 'function') {
-        window.amazon.Login.logout();
-      }
-    },
-    reset () {
-      // @TODO: Ensure we are using all of these
-      // some vars are set in the payments mixin. We should try to edit in one place
-      this.amazonLogout();
-
-      this.amazonPayments.modal = null;
-      this.amazonPayments.type = null;
-      this.amazonPayments.loggedIn = false;
-
-      // Gift
-      this.amazonPayments.gift = null;
-      this.amazonPayments.giftReceiver = null;
-
-      this.amazonPayments.billingAgreementId = null;
-      this.amazonPayments.orderReferenceId = null;
-      this.amazonPayments.paymentSelected = false;
-      this.amazonPayments.recurringConsent = false;
-      this.amazonPayments.subscription = null;
-      this.amazonPayments.coupon = null;
-      this.amazonPayments.groupToCreate = null;
-      this.amazonPayments.group = null;
-    },
     cancelSubscriptionConfirm (config) {
       if (config.canCancel === false) return;
       this.$root.$emit('habitica:cancel-subscription-confirm', config);
@@ -349,6 +307,21 @@ export default {
       } catch (e) {
         window.alert(e.response.data.message); // eslint-disable-line no-alert
       }
+    },
+    stripeGroup (options = { group: {}, upgrade: false }) {
+      const paymentData = {
+        subscription: 'group_monthly',
+        coupon: null,
+      };
+
+      if (options.upgrade && options.group._id) {
+        paymentData.groupId = options.group._id;
+        paymentData.group = options.group;
+      } else {
+        paymentData.groupToCreate = options.group;
+      }
+
+      this.redirectToStripe(paymentData);
     },
   },
 };

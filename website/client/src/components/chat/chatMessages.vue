@@ -3,15 +3,6 @@
     ref="container"
     class="container-fluid"
   >
-    <div class="row">
-      <div class="col-12">
-        <copy-as-todo-modal
-          :group-type="groupType"
-          :group-name="groupName"
-          :group-id="groupId"
-        />
-      </div>
-    </div>
     <div class="row loadmore">
       <div v-if="canLoadMore">
         <div class="loadmore-divider"></div>
@@ -33,32 +24,34 @@
     <div
       v-for="msg in messages.filter(m => chat && canViewFlag(m))"
       :key="msg.id"
+      class="message-row"
+      :class="{ 'margin-right': user._id !== msg.uuid}"
     >
       <div class="d-flex">
         <avatar
           v-if="user._id !== msg.uuid && msg.uuid !== 'system'"
           class="avatar-left"
+          :height="null"
           :class="{ invisible: avatarUnavailable(msg) }"
-          :member="msg.userStyles || cachedProfileData[msg.uuid]"
+          :member="msg.userStyles || cachedProfileData[msg.uuid] || {}"
           :avatar-only="true"
           :hide-class-badge="true"
           :override-top-padding="'14px'"
           @click.native="showMemberModal(msg.uuid)"
         />
-        <div class="card">
-          <chat-card
-            :msg="msg"
-            :group-id="groupId"
-            @message-liked="messageLiked"
-            @message-removed="messageRemoved"
-            @show-member-modal="showMemberModal"
-            @chat-card-mounted="itemWasMounted"
-          />
-        </div>
+        <message-card
+          :msg="msg"
+          :group-id="groupId"
+          :user-sent-message="user._id === msg.uuid"
+          @message-liked="messageLiked"
+          @message-removed="messageRemoved"
+          @message-card-mounted="itemWasMounted"
+        />
         <avatar
           v-if="user._id === msg.uuid"
           :class="{ invisible: avatarUnavailable(msg) }"
-          :member="msg.userStyles || cachedProfileData[msg.uuid]"
+          :member="msg.userStyles || cachedProfileData[msg.uuid] || {}"
+          :height="null"
           :avatar-only="true"
           :hide-class-badge="true"
           :override-top-padding="'14px'"
@@ -70,7 +63,7 @@
 </template>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   .avatar {
     width: 10%;
@@ -105,11 +98,6 @@
     }
   }
 
-  .avatar-left {
-    margin-left: -1.5rem;
-    margin-right: 2rem;
-  }
-
   .hr {
     width: 100%;
     height: 20px;
@@ -137,10 +125,26 @@
     margin-bottom: .5em;
     padding: 0rem;
     width: 90%;
+
+    &.system-message {
+      width: 100%;
+    }
   }
 
   .message-scroll .d-flex {
     min-width: 1px;
+  }
+
+  .message-row {
+    margin-left: 12px;
+    margin-right: 0;
+    margin-bottom: 1.2rem;
+
+    &:not(.margin-right) {
+      .d-flex {
+        justify-content: flex-end;
+      }
+    }
   }
 </style>
 
@@ -149,18 +153,19 @@ import moment from 'moment';
 import axios from 'axios';
 import debounce from 'lodash/debounce';
 import findIndex from 'lodash/findIndex';
-import { mapState } from '@/libs/store';
+import { userStateMixin } from '../../mixins/userState';
 
 import Avatar from '../avatar';
-import copyAsTodoModal from './copyAsTodoModal';
-import chatCard from './chatCard';
+import MessageCard from '@/components/messages/messageCard.vue';
+
+// TODO merge chatMessages.vue (party message list) with messageList.vue (private message list)
 
 export default {
   components: {
-    copyAsTodoModal,
-    chatCard,
+    MessageCard,
     Avatar,
   },
+  mixins: [userStateMixin],
   props: {
     chat: {},
     groupType: {},
@@ -182,7 +187,6 @@ export default {
     };
   },
   computed: {
-    ...mapState({ user: 'user.data' }),
     // @TODO: We need a different lazy load mechnism.
     // But honestly, adding a paging route to chat would solve this
     messages () {
@@ -214,7 +218,7 @@ export default {
     canViewFlag (message) {
       if (message.uuid === this.user._id) return true;
       if (!message.flagCount || message.flagCount < 2) return true;
-      return this.user.contributor.admin;
+      return this.hasPermission(this.user, 'moderator');
     },
     loadProfileCache: debounce(function loadProfileCache (screenPosition) {
       this._loadProfileCache(screenPosition);

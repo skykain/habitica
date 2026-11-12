@@ -1,6 +1,6 @@
 import {
+  createAndPopulateGroup,
   generateUser,
-  generateGroup,
   translate as t,
 } from '../../../../../helpers/api-integration/v3';
 import amzLib from '../../../../../../website/server/libs/payments/amazon';
@@ -10,11 +10,8 @@ describe('payments : amazon #subscribeCancel', () => {
   let user; let group; let
     amazonSubscribeCancelStub;
 
-  beforeEach(async () => {
-    user = await generateUser();
-  });
-
   it('throws error when there users has no subscription', async () => {
+    user = await generateUser();
     await expect(user.get(endpoint)).to.eventually.be.rejected.and.eql({
       code: 401,
       error: 'NotAuthorized',
@@ -34,6 +31,7 @@ describe('payments : amazon #subscribeCancel', () => {
     it('cancels a user subscription', async () => {
       user = await generateUser({
         'profile.name': 'sender',
+        'preferences.analyticsConsent': true,
         'purchased.plan.customerId': 'customer-id',
         'purchased.plan.planId': 'basic_3mo',
         'purchased.plan.lastBillingDate': new Date(),
@@ -50,22 +48,22 @@ describe('payments : amazon #subscribeCancel', () => {
     });
 
     it('cancels a group subscription', async () => {
-      user = await generateUser({
-        'profile.name': 'sender',
-        'purchased.plan.customerId': 'customer-id',
-        'purchased.plan.planId': 'basic_3mo',
-        'purchased.plan.lastBillingDate': new Date(),
-        balance: 2,
-      });
-
-      group = await generateGroup(user, {
-        name: 'test group',
-        type: 'guild',
-        privacy: 'public',
-        'purchased.plan.customerId': 'customer-id',
-        'purchased.plan.planId': 'basic_3mo',
-        'purchased.plan.lastBillingDate': new Date(),
-      });
+      ({ group, groupLeader: user } = await createAndPopulateGroup({
+        groupDetails: {
+          name: 'test group',
+          type: 'guild',
+          privacy: 'private',
+        },
+        leaderDetails: {
+          'profile.name': 'sender',
+          'preferences.analyticsConsent': true,
+          'purchased.plan.customerId': 'customer-id',
+          'purchased.plan.planId': 'basic_3mo',
+          'purchased.plan.lastBillingDate': new Date(),
+          balance: 2,
+        },
+        upgradeToGroupPlan: true,
+      }));
 
       await user.get(`${endpoint}&groupId=${group._id}`);
 

@@ -10,14 +10,6 @@ describe('payments : google #norenewsubscribe', () => {
     user = await generateUser();
   });
 
-  it('verifies sub key', async () => {
-    await expect(user.post(endpoint)).to.eventually.be.rejected.and.eql({
-      code: 400,
-      error: 'BadRequest',
-      message: t('missingSubscriptionCode'),
-    });
-  });
-
   it('verifies receipt existence', async () => {
     await expect(user.post(endpoint, {
       sku,
@@ -58,11 +50,8 @@ describe('payments : google #norenewsubscribe', () => {
 
       expect(subscribeStub).to.be.calledOnce;
       expect(subscribeStub.args[0][0].user._id).to.eql(user._id);
-      expect(subscribeStub.args[0][0].sku).to.eql(sku);
       expect(subscribeStub.args[0][0].receipt).to.eql('receipt');
       expect(subscribeStub.args[0][0].signature).to.eql('signature');
-      expect(subscribeStub.args[0][0].headers['x-api-key']).to.eql(user.apiToken);
-      expect(subscribeStub.args[0][0].headers['x-api-user']).to.eql(user._id);
     });
 
     it('gifts a purchase', async () => {
@@ -87,11 +76,8 @@ describe('payments : google #norenewsubscribe', () => {
 
       expect(subscribeStub).to.be.calledOnce;
       expect(subscribeStub.args[0][0].user._id).to.eql(user._id);
-      expect(subscribeStub.args[0][0].sku).to.eql(sku);
       expect(subscribeStub.args[0][0].receipt).to.eql('receipt');
       expect(subscribeStub.args[0][0].signature).to.eql('signature');
-      expect(subscribeStub.args[0][0].headers['x-api-key']).to.eql(user.apiToken);
-      expect(subscribeStub.args[0][0].headers['x-api-user']).to.eql(user._id);
     });
   });
 });

@@ -1,5 +1,6 @@
+import moment from 'moment';
 import nconf from 'nconf';
-import { authWithHeaders } from '../../middlewares/auth';
+import { authWithHeaders, chatPrivilegesRequired } from '../../middlewares/auth';
 import { model as Group } from '../../models/group';
 import { model as User } from '../../models/user';
 import {
@@ -13,17 +14,16 @@ import {
   NotAuthorized,
 } from '../../libs/errors';
 import { removeFromArray } from '../../libs/collectionManipulators';
-import { getUserInfo, getGroupUrl, sendTxn } from '../../libs/email';
+import { getUserInfo } from '../../libs/email';
 import * as slack from '../../libs/slack';
 import { chatReporterFactory } from '../../libs/chatReporting/chatReporterFactory';
-import { getAuthorEmailFromMessage } from '../../libs/chat';
 import bannedWords from '../../libs/bannedWords';
 import { getMatchesByWordArray } from '../../libs/stringUtils';
 import bannedSlurs from '../../libs/bannedSlurs';
-import apiError from '../../libs/apiError';
+import { apiError } from '../../libs/apiError';
 import highlightMentions from '../../libs/highlightMentions';
 
-const FLAG_REPORT_EMAILS = nconf.get('FLAG_REPORT_EMAIL').split(',').map(email => ({ email, canSend: true }));
+const ACCOUNT_MIN_CHAT_AGE = Number(nconf.get('ACCOUNT_MIN_CHAT_AGE'));
 
 /**
  * @apiDefine MessageNotFound
@@ -60,6 +60,8 @@ function textContainsBannedSlur (message) {
  *
  * @apiParam (Path) {String} groupId The group _id ('party' for the user party and
  *                                   'habitrpg' for tavern are accepted).
+ * @apiParam (Query) {Number} [limit=50] The number of messages to fetch (max 400).
+ * @apiParam (Query) {String} [before] Fetch messages older than this message ID.
  *
  * @apiSuccess {Array} data An array of <a href='https://github.com/HabitRPG/habitica/blob/develop/website/server/models/group.js#L51' target='_blank'>chat messages</a>
  *
@@ -74,15 +76,21 @@ api.getChat = {
     const { user } = res.locals;
 
     req.checkParams('groupId', apiError('groupIdRequired')).notEmpty();
+    req.checkQuery('before').optional().isUUID();
 
     const validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
 
     const { groupId } = req.params;
-    const group = await Group.getGroup({ user, groupId, fields: 'chat' });
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 400) : 50;
+    const { before } = req.query;
+    const group = await Group.getGroup({ user, groupId, fields: 'chat privacy' });
     if (!group) throw new NotFound(res.t('groupNotFound'));
+    if (group.privacy === 'public') {
+      throw new BadRequest(res.t('featureRetired'));
+    }
 
-    const groupChat = await Group.toJSONCleanChat(group, user);
+    const groupChat = await Group.toJSONCleanChat(group, user, { limit, before });
     res.respond(200, groupChat.chat);
   },
 };
@@ -111,7 +119,7 @@ function getBannedWordsFromText (message) {
 api.postChat = {
   method: 'POST',
   url: '/groups/:groupId/chat',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders(), chatPrivilegesRequired()],
   async handler (req, res) {
     const { user } = res.locals;
     const { groupId } = req.params;
@@ -124,33 +132,24 @@ api.postChat = {
     if (validationErrors) throw validationErrors;
 
     const group = await Group.getGroup({ user, groupId });
+    if (!group) throw new NotFound(res.t('groupNotFound'));
+
+    const { purchased } = group;
+    const isUpgraded = purchased && purchased.plan && purchased.plan.customerId
+      && (!purchased.plan.dateTerminated || moment().isBefore(purchased.plan.dateTerminated));
+
+    if (group.type !== 'party' && !isUpgraded) {
+      throw new BadRequest(res.t('featureRetired'));
+    }
 
     // Check message for banned slurs
-    if (textContainsBannedSlur(req.body.message)) {
+    if (group && group.privacy !== 'private' && textContainsBannedSlur(req.body.message)) {
       const { message } = req.body;
       user.flags.chatRevoked = true;
       await user.save();
 
       // Email the mods
       const authorEmail = getUserInfo(user, ['email']).email;
-      const groupUrl = getGroupUrl(group);
-
-      const report = [
-        { name: 'MESSAGE_TIME', content: (new Date()).toString() },
-        { name: 'MESSAGE_TEXT', content: message },
-
-        { name: 'AUTHOR_USERNAME', content: user.profile.name },
-        { name: 'AUTHOR_UUID', content: user._id },
-        { name: 'AUTHOR_EMAIL', content: authorEmail },
-        { name: 'AUTHOR_MODAL_URL', content: `/profile/${user._id}` },
-
-        { name: 'GROUP_NAME', content: group.name },
-        { name: 'GROUP_TYPE', content: group.type },
-        { name: 'GROUP_ID', content: group._id },
-        { name: 'GROUP_URL', content: groupUrl },
-      ];
-
-      sendTxn(FLAG_REPORT_EMAILS, 'slur-report-to-mods', report);
 
       // Slack the mods
       slack.sendSlurNotification({
@@ -163,12 +162,6 @@ api.postChat = {
       throw new BadRequest(res.t('bannedSlurUsed'));
     }
 
-    if (!group) throw new NotFound(res.t('groupNotFound'));
-
-    if (group.privacy === 'public' && user.flags.chatRevoked) {
-      throw new NotAuthorized(res.t('chatPrivilegesRevoked'));
-    }
-
     // prevent banned words being posted, except in private guilds/parties
     // and in certain public guilds with specific topics
     if (group.privacy === 'public' && !group.bannedWordsAllowed) {
@@ -178,14 +171,21 @@ api.postChat = {
       }
     }
 
-    const chatRes = await Group.toJSONCleanChat(group, user);
     const lastClientMsg = req.query.previousMsg;
+    const chatRes = await Group.toJSONCleanChat(group, user, {
+      after: lastClientMsg,
+    });
     const chatUpdated = !!(
       lastClientMsg && group.chat && group.chat[0] && group.chat[0].id !== lastClientMsg
     );
 
     if (group.checkChatSpam(user)) {
       throw new NotAuthorized(res.t('messageGroupChatSpam'));
+    }
+
+    // Check if account is newer than the minimum age for chat participation
+    if (moment().diff(user.auth.timestamps.created, 'minutes') < ACCOUNT_MIN_CHAT_AGE) {
+      throw new BadRequest(res.t('chatTemporarilyUnavailable'));
     }
 
     const sanitizedMessageText = sanitizeMessageText(req.body.message);
@@ -196,29 +196,11 @@ api.postChat = {
     }
 
     let flagCount = 0;
-    if (group.privacy === 'public' && user.flags.chatShadowMuted) {
+    if (user.flags.chatShadowMuted) {
       flagCount = common.constants.CHAT_FLAG_FROM_SHADOW_MUTE;
 
       // Email the mods
       const authorEmail = getUserInfo(user, ['email']).email;
-      const groupUrl = getGroupUrl(group);
-
-      const report = [
-        { name: 'MESSAGE_TIME', content: (new Date()).toString() },
-        { name: 'MESSAGE_TEXT', content: message },
-
-        { name: 'AUTHOR_USERNAME', content: user.profile.name },
-        { name: 'AUTHOR_UUID', content: user._id },
-        { name: 'AUTHOR_EMAIL', content: authorEmail },
-        { name: 'AUTHOR_MODAL_URL', content: `/profile/${user._id}` },
-
-        { name: 'GROUP_NAME', content: group.name },
-        { name: 'GROUP_TYPE', content: group.type },
-        { name: 'GROUP_ID', content: group._id },
-        { name: 'GROUP_URL', content: groupUrl },
-      ];
-
-      sendTxn(FLAG_REPORT_EMAILS, 'shadow-muted-post-report-to-mods', report);
 
       // Slack the mods
       slack.sendShadowMutedPostNotification({
@@ -229,7 +211,7 @@ api.postChat = {
       });
     }
 
-    const newChatMessage = group.sendChat({
+    const newChatMessage = await group.sendChat({
       message,
       user,
       flagCount,
@@ -247,24 +229,7 @@ api.postChat = {
     }
 
     await Promise.all(toSave);
-
-    const analyticsObject = {
-      uuid: user._id,
-      hitType: 'event',
-      category: 'behavior',
-      groupType: group.type,
-      privacy: group.privacy,
-      headers: req.headers,
-    };
-
-    if (mentions) {
-      analyticsObject.mentionsCount = mentions.length;
-    } else {
-      analyticsObject.mentionsCount = 0;
-    }
-    if (group.privacy === 'public') {
-      analyticsObject.groupName = group.name;
-    }
+    await group.trimChat();
 
     if (chatUpdated) {
       res.respond(200, { chat: chatRes.chat });
@@ -290,7 +255,6 @@ api.postChat = {
  * @apiUse MessageNotFound
  * @apiUse GroupIdRequired
  * @apiUse ChatIdRequired
- * @apiError (400) {NotFound} messageGroupChatLikeOwnMessage A user can't like their own message
  */
 api.likeChat = {
   method: 'POST',
@@ -308,13 +272,14 @@ api.likeChat = {
 
     const group = await Group.getGroup({ user, groupId });
     if (!group) throw new NotFound(res.t('groupNotFound'));
+    if (group.privacy === 'public') {
+      throw new BadRequest(res.t('featureRetired'));
+    }
 
-    const message = await Chat.findOne({ _id: req.params.chatId }).exec();
+    const message = await Chat.findOne({ _id: req.params.chatId, groupId: group._id }).exec();
     if (!message) throw new NotFound(res.t('messageGroupChatNotFound'));
-    // @TODO correct this error type
-    if (message.uuid === user._id) throw new NotFound(res.t('messageGroupChatLikeOwnMessage'));
-
     if (!message.likes) message.likes = {};
+
     message.likes[user._id] = !message.likes[user._id];
     message.markModified('likes');
     await message.save();
@@ -401,14 +366,14 @@ api.clearChatFlags = {
     const validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
 
-    if (!user.contributor.admin) {
+    if (!user.hasPermission('moderator')) {
       throw new NotAuthorized(res.t('messageGroupChatAdminClearFlagCount'));
     }
 
     const group = await Group.getGroup({
       user,
       groupId,
-      optionalMembership: user.contributor.admin,
+      optionalMembership: user.hasPermission('moderator'),
     });
     if (!group) throw new NotFound(res.t('groupNotFound'));
 
@@ -417,30 +382,6 @@ api.clearChatFlags = {
 
     message.flagCount = 0;
     await message.save();
-
-    const adminEmailContent = getUserInfo(user, ['email']).email;
-    const authorEmail = getAuthorEmailFromMessage(message);
-    const groupUrl = getGroupUrl(group);
-
-    sendTxn(FLAG_REPORT_EMAILS, 'unflag-report-to-mods', [
-      { name: 'MESSAGE_TIME', content: (new Date(message.timestamp)).toString() },
-      { name: 'MESSAGE_TEXT', content: message.text },
-
-      { name: 'ADMIN_USERNAME', content: user.profile.name },
-      { name: 'ADMIN_UUID', content: user._id },
-      { name: 'ADMIN_EMAIL', content: adminEmailContent },
-      { name: 'ADMIN_MODAL_URL', content: `/profile/${user._id}` },
-
-      { name: 'AUTHOR_USERNAME', content: message.user },
-      { name: 'AUTHOR_UUID', content: message.uuid },
-      { name: 'AUTHOR_EMAIL', content: authorEmail },
-      { name: 'AUTHOR_MODAL_URL', content: `/profile/${message.uuid}` },
-
-      { name: 'GROUP_NAME', content: group.name },
-      { name: 'GROUP_TYPE', content: group.type },
-      { name: 'GROUP_ID', content: group._id },
-      { name: 'GROUP_URL', content: groupUrl },
-    ]);
 
     res.respond(200, {});
   },
@@ -500,7 +441,7 @@ api.seenChat = {
     // See https://github.com/HabitRPG/habitica/pull/9321#issuecomment-354187666 for more info
     user._v += 1;
 
-    await User.update({ _id: user._id }, update).exec();
+    await User.updateOne({ _id: user._id }, update).exec();
     res.respond(200, {});
   },
 };
@@ -547,20 +488,21 @@ api.deleteChat = {
     const group = await Group.getGroup({ user, groupId, fields: 'chat' });
     if (!group) throw new NotFound(res.t('groupNotFound'));
 
-    const message = await Chat.findOne({ _id: chatId }).exec();
+    const message = await Chat.findOne({ _id: chatId }).select('uuid').lean().exec();
     if (!message) throw new NotFound(res.t('messageGroupChatNotFound'));
 
-    if (user._id !== message.uuid && !user.contributor.admin) {
+    if (user._id !== message.uuid && !user.hasPermission('moderator')) {
       throw new NotAuthorized(res.t('onlyCreatorOrAdminCanDeleteChat'));
     }
-
-    const chatRes = await Group.toJSONCleanChat(group, user);
     const lastClientMsg = req.query.previousMsg;
+    const chatRes = await Group.toJSONCleanChat(group, user, {
+      after: lastClientMsg,
+    });
     const chatUpdated = !!(
       lastClientMsg && group.chat && group.chat[0] && group.chat[0].id !== lastClientMsg
     );
 
-    await Chat.remove({ _id: message._id }).exec();
+    await Chat.deleteOne({ _id: message._id }).exec();
 
     if (chatUpdated) {
       removeFromArray(chatRes.chat, { id: chatId });

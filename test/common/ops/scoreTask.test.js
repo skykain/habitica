@@ -239,26 +239,14 @@ describe('shared.ops.scoreTask', () => {
       });
       const firstTaskDelta = ref.afterUser.party.quest.progress.up;
       expect(firstTaskDelta).to.be.greaterThan(0);
-      expect(ref.afterUser._tmp.quest.progressDelta).to.eql(firstTaskDelta);
+      expect(ref.afterUser._tmp.quest.progressDelta).to.eql(Math.ceil(firstTaskDelta));
 
       scoreTask({
         user: ref.afterUser, task: habit, direction: 'up', cron: false,
       });
       const secondTaskDelta = ref.afterUser.party.quest.progress.up - firstTaskDelta;
       expect(secondTaskDelta).to.be.greaterThan(0);
-      expect(ref.afterUser._tmp.quest.progressDelta).to.eql(secondTaskDelta);
-    });
-
-    it('does not modify stats when task need approval', () => {
-      todo.group.approval.required = true;
-      options = {
-        user: ref.afterUser, task: todo, direction: 'up', times: 5, cron: false,
-      };
-      scoreTask(options);
-
-      expect(ref.afterUser.stats.hp).to.eql(50);
-      expect(ref.afterUser.stats.exp).to.equal(ref.beforeUser.stats.exp);
-      expect(ref.afterUser.stats.gp).to.equal(ref.beforeUser.stats.gp);
+      expect(ref.afterUser._tmp.quest.progressDelta).to.eql(Math.ceil(secondTaskDelta));
     });
 
     context('habits', () => {

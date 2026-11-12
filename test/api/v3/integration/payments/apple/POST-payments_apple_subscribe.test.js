@@ -5,11 +5,8 @@ describe('payments : apple #subscribe', () => {
   const endpoint = '/iap/ios/subscribe';
   let user;
 
-  beforeEach(async () => {
-    user = await generateUser();
-  });
-
   it('verifies sub key', async () => {
+    user = await generateUser();
     await expect(user.post(endpoint)).to.eventually.be.rejected.and.eql({
       code: 400,
       error: 'BadRequest',
@@ -30,6 +27,7 @@ describe('payments : apple #subscribe', () => {
 
     it('makes a purchase', async () => {
       user = await generateUser({
+        'preferences.analyticsConsent': true,
         'profile.name': 'sender',
         'purchased.plan.customerId': 'customer-id',
         'purchased.plan.planId': 'basic_3mo',
@@ -45,11 +43,10 @@ describe('payments : apple #subscribe', () => {
       });
 
       expect(subscribeStub).to.be.calledOnce;
-      expect(subscribeStub.args[0][0]).to.eql(sku);
-      expect(subscribeStub.args[0][1]._id).to.eql(user._id);
-      expect(subscribeStub.args[0][2]).to.eql('receipt');
-      expect(subscribeStub.args[0][3]['x-api-key']).to.eql(user.apiToken);
-      expect(subscribeStub.args[0][3]['x-api-user']).to.eql(user._id);
+      expect(subscribeStub.args[0][0]._id).to.eql(user._id);
+      expect(subscribeStub.args[0][1]).to.eql('receipt');
+      expect(subscribeStub.args[0][2]['x-api-key']).to.eql(user.apiToken);
+      expect(subscribeStub.args[0][2]['x-api-user']).to.eql(user._id);
     });
   });
 });

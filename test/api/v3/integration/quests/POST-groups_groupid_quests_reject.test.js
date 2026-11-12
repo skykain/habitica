@@ -3,7 +3,7 @@ import {
   createAndPopulateGroup,
   translate as t,
   generateUser,
-  sleep,
+  waitFor,
 } from '../../../../helpers/api-integration/v3';
 import { chatModel as Chat } from '../../../../../website/server/models/message';
 
@@ -25,7 +25,7 @@ describe('POST /groups/:groupId/quests/reject', () => {
     leader = groupLeader;
     partyMembers = members;
 
-    await leader.update({
+    await leader.updateOne({
       [`items.quests.${PET_QUEST}`]: 1,
     });
     user = await generateUser();
@@ -53,6 +53,7 @@ describe('POST /groups/:groupId/quests/reject', () => {
     it('returns an error when group is a guild', async () => {
       const { group: guild, groupLeader: guildLeader } = await createAndPopulateGroup({
         groupDetails: { type: 'guild', privacy: 'private' },
+        upgradeToGroupPlan: true,
       });
 
       await expect(guildLeader.post(`/groups/${guild._id}/quests/reject`))
@@ -97,6 +98,23 @@ describe('POST /groups/:groupId/quests/reject', () => {
 
       await partyMembers[0].sync();
       expect(partyMembers[0].party.quest.RSVPNeeded).to.be.false;
+    });
+
+    it('heals stuck RSVPNeeded when group already has the user rejected', async () => {
+      await leader.post(`/groups/${questingGroup._id}/quests/invite/${PET_QUEST}`);
+      await partyMembers[0].post(`/groups/${questingGroup._id}/quests/reject`);
+
+      await partyMembers[0].updateOne({ 'party.quest.RSVPNeeded': true });
+      await partyMembers[0].sync();
+      expect(partyMembers[0].party.quest.RSVPNeeded).to.be.true;
+
+      const res = await partyMembers[0].post(`/groups/${questingGroup._id}/quests/reject`);
+      expect(res).to.exist;
+
+      await partyMembers[0].sync();
+      await questingGroup.sync();
+      expect(partyMembers[0].party.quest.RSVPNeeded).to.equal(false);
+      expect(questingGroup.quest.members[partyMembers[0]._id]).to.equal(false);
     });
 
     it('return an error when a user rejects an invite already accepted', async () => {
@@ -169,17 +187,17 @@ describe('POST /groups/:groupId/quests/reject', () => {
       // quest will start after everyone has accepted or rejected
       await rejectingMember.post(`/groups/${questingGroup._id}/quests/reject`);
 
-      await sleep(0.5);
-
       await questingGroup.sync();
 
       expect(questingGroup.quest.active).to.be.true;
 
-      await rejectingMember.sync();
+      await waitFor(async () => {
+        await rejectingMember.sync();
 
-      expect(rejectingMember.party.quest.RSVPNeeded).to.eql(false);
-      expect(rejectingMember.party.quest.key).to.not.exist;
-      expect(rejectingMember.party.quest.completed).to.not.exist;
+        expect(rejectingMember.party.quest.RSVPNeeded).to.eql(false);
+        expect(rejectingMember.party.quest.key).to.not.exist;
+        expect(rejectingMember.party.quest.completed).to.not.exist;
+      });
     });
 
     it('starts the quest when the last user reject and verifies chat', async () => {

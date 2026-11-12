@@ -11,9 +11,9 @@ export function setUpLogging () { // eslint-disable-line import/prefer-default-e
   };
 
   const _LTracker = window._LTracker || [];
-  if (process.env.LOGGLY_CLIENT_TOKEN !== '') {
+  if (import.meta.env.LOGGLY_CLIENT_TOKEN !== '') {
     _LTracker.push({
-      logglyKey: process.env.LOGGLY_CLIENT_TOKEN, // eslint-disable-line no-process-env
+      logglyKey: import.meta.env.LOGGLY_CLIENT_TOKEN, // eslint-disable-line no-process-env
       sendConsoleErrors: true,
       tag: 'ClientJS',
       json: true,
@@ -23,8 +23,10 @@ export function setUpLogging () { // eslint-disable-line import/prefer-default-e
   window.onunhandledrejection = event => {
     console.error(`Unhandled promise rejection: ${event.reason}`);
     console.error('Full info:', event);
+    if (!event.reason || event.reason.stack?.includes('chrome-extension')) return;
     _LTracker.push({
-      event,
+      message: event.reason.message,
+      stack: event.reason.stack,
     });
   };
 
@@ -34,10 +36,12 @@ export function setUpLogging () { // eslint-disable-line import/prefer-default-e
     console.error('Component where it occurred:', vm);
     console.error('Info:', info);
 
-    _LTracker.push({
-      err,
-      info,
-    });
+    if (err && Object.keys(err).length) {
+      _LTracker.push({
+        err,
+        info,
+      });
+    }
   };
 }
 /* eslint-enable no-console */

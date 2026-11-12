@@ -50,16 +50,18 @@ h3.markdown {
   }
 
   a {
-    color: $blue-10;
-
     &:hover, &:active, &:focus {
-      color: $blue-10;
       text-decoration: underline;
     }
   }
 
   img {
     max-width: 100%;
+  }
+
+  .emoji-native {
+    font-size: 0.85em;
+    vertical-align: middle;
   }
   
   blockquote {

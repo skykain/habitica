@@ -1,81 +1,83 @@
 <template>
-  <div class="row footer-row">
+  <div>
     <buy-gems-modal v-if="user" />
-    <!--modify-inventory(v-if="isUserLoaded")-->
-    <footer class="col-12 expanded">
-      <div class="row">
-        <div class="col-12 col-md-2">
-          <h3>
-            <a
-              href="https://itunes.apple.com/us/app/habitica/id994882113?ls=1&mt=8"
-              target="_blank"
-            >{{ $t('mobileIOS') }}</a>
-          </h3>
-          <h3>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.habitrpg.android.habitica"
-              target="_blank"
-            >{{ $t('mobileAndroid') }}</a>
-          </h3>
-        </div>
-        <div class="col-12 col-md-2">
-          <h3>{{ $t('footerCompany') }}</h3>
+    <privacy-modal />
+    <footer>
+      <div class="columns d-flex w-100 justify-content-between">
+        <!-- Product -->
+        <div class="product">
+          <h3>{{ $t('footerProduct') }}</h3>
           <ul>
+            <li>
+              <a
+                href="https://itunes.apple.com/us/app/habitica/id994882113?ls=1&mt=8"
+                rel="noopener noreferrer"
+                target="_blank"
+              >{{ $t('mobileIOS') }}
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://play.google.com/store/apps/details?id=com.habitrpg.android.habitica"
+                rel="noopener noreferrer"
+                target="_blank"
+              >{{ $t('mobileAndroid') }}
+              </a>
+            </li>
+            <li>
+              <router-link :to="user ? '/group-plans' : '/static/group-plans'">
+                {{ $t('groupPlans') }}
+              </router-link>
+            </li>
             <li>
               <router-link to="/static/features">
                 {{ $t('companyAbout') }}
               </router-link>
             </li>
+          </ul>
+        </div>
+        <!-- Company -->
+        <div class="company">
+          <h3>{{ $t('footerCompany') }}</h3>
+          <ul>
             <li>
-              <a
-                href="https://habitica.wordpress.com/"
-                target="_blank"
-              >{{ $t('companyBlog') }}</a>
+              <a href="mailto:admin@habitica.com">
+                {{ $t('contactUs') }}
+              </a>
             </li>
-            <li>
-              <a
-                href="http://blog.habitrpg.com/"
-                target="_blank"
-              >{{ $t('tumblr') }}</a>
-            </li>
-            <li>
-              <router-link to="/static/faq">
-                {{ $t('FAQ') }}
-              </router-link>
-            </li>
-            <li>
-              <a
-                href="https://habitica.fandom.com/wiki/Whats_New"
-                target="_blank"
-              >{{ $t('oldNews') }}</a>
-            </li>
-            <!-- Commenting out merch page see https://github.com/HabitRPG/habitica/issues/12039
-            <li>
-              <router-link to="/static/merch">
-                {{ $t('merch') }}
-              </router-link>
-            </li>
-            -->
             <li>
               <router-link to="/static/press-kit">
                 {{ $t('presskit') }}
               </router-link>
             </li>
             <li>
-              <router-link to="/static/contact">
-                {{ $t('contactUs') }}
-              </router-link>
+              <a
+                href="https://habitica.wordpress.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('companyBlog') }}
+              </a>
+            </li>
+            <li>
+              <a
+                @click="showBailey()"
+              >
+                {{ $t('oldNews') }}
+              </a>
             </li>
           </ul>
         </div>
-        <div class="col-12 col-md-2">
+        <!-- Community -->
+        <div class="community">
           <h3>{{ $t('footerCommunity') }}</h3>
           <ul>
             <li>
               <a
                 target="_blank"
+                rel="noopener noreferrer"
                 href="/static/community-guidelines"
-              >{{ $t('communityGuidelines') }}</a>
+              >{{ $t('communityGuidelines') }}
+              </a>
             </li>
             <li>
               <router-link to="/hall/contributors">
@@ -84,8 +86,50 @@
             </li>
             <li>
               <a
-                :href="bugReportMailto"
+                href="https://github.com/HabitRPG/habitica/wiki/Contributing-to-Habitica"
                 target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('companyContribute') }}
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://translate.habitica.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('translateHabitica') }}
+              </a>
+            </li>
+          </ul>
+        </div>
+        <!-- Support -->
+        <div class="support">
+          <h3>{{ $t ('support') }}</h3>
+          <ul>
+            <li>
+              <router-link to="/static/faq">
+                {{ $t('FAQ') }}
+              </router-link>
+            </li>
+            <li
+              v-if="user"
+            >
+              <a
+                href=""
+                target="_blank"
+                rel="noopener noreferrer"
+                @click.prevent="openBugReportModal()"
+              >
+                {{ $t('reportBug') }}
+              </a>
+            </li>
+            <li
+              v-else
+            >
+              <a
+                href="mailto:admin@habitica.com?subject=Habitica Web Bug Report"
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 {{ $t('reportBug') }}
               </a>
@@ -94,147 +138,253 @@
               <a
                 href="https://docs.google.com/forms/d/e/1FAIpQLScPhrwq_7P1C6PTrI3lbvTsvqGyTNnGzp1ugi1Ml0PFee_p5g/viewform?usp=sf_link"
                 target="_blank"
-              >{{ $t('requestFeature') }}</a>
-            </li>
-            <li v-html="$t('communityExtensions')"></li>
-            <li>
-              <a
-                href="https://www.facebook.com/Habitica"
-                target="_blank"
-              >{{ $t('communityFacebook') }}</a>
-            </li>
-            <li>
-              <a
-                href="https://www.instagram.com/habitica"
-                target="_blank"
-              >{{ $t('communityInstagram') }}</a>
+                rel="noopener noreferrer"
+              >{{ $t('requestFeature') }}
+              </a>
             </li>
           </ul>
         </div>
-        <div class="col-12 col-md-6">
-          <div class="row">
-            <div class="col-6">
-              <h3>{{ $t('footerDevs') }}</h3>
-              <ul>
-                <li>
-                  <a
-                    href="/apidoc"
-                    target="_blank"
-                  >{{ $t('APIv3') }}</a>
-                </li>
-                <li>
-                  <a
-                    :href="getDataDisplayToolUrl"
-                    target="_blank"
-                  >{{ $t('dataDisplayTool') }}</a>
-                </li>
-                <li>
-                  <a
-                    href="https://habitica.fandom.com/wiki/Guidance_for_Blacksmiths"
-                    target="_blank"
-                  >{{ $t('guidanceForBlacksmiths') }}</a>
-                </li>
-              </ul>
-            </div>
-            <div class="col-6 social">
-              <h3>{{ $t('footerSocial') }}</h3>
-              <div class="icons">
+        <!-- Developers -->
+        <div class="developers">
+          <h3>{{ $t('footerDevs') }}</h3>
+          <ul>
+            <li>
+              <a
+                href="https://apidoc.habitica.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('APIv3') }}
+              </a>
+            </li>
+            <li>
+              <a
+                :href="getDataDisplayToolUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('dataDisplayTool') }}
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://habitica.fandom.com/wiki/Guidance_for_Blacksmiths"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ $t('guidanceForBlacksmiths') }}
+              </a>
+            </li>
+          </ul>
+        </div>
+        <!-- Social - Desktop/Tablet -->
+        <div class="social">
+          <div>
+            <h3>{{ $t('footerSocial') }}</h3>
+            <div>
+              <div class="d-flex align-items-center mb-1">
                 <a
-                  class="social-circle"
-                  href="https://twitter.com/habitica"
+                  class="social-circle mr-2"
+                  href="https://www.instagram.com/habitica/"
                   target="_blank"
+                  rel="noopener noreferrer"
                 >
                   <div
                     class="social-icon svg-icon"
-                    v-html="icons.twitter"
-                  ></div>
-                </a>
-                <a
-                  class="social-circle"
-                  href="https://www.instagram.com/habitica/"
-                  target="_blank"
-                >
-                  <div
-                    class="social-icon svg-icon instagram"
                     v-html="icons.instagram"
                   ></div>
                 </a>
                 <a
-                  class="social-circle"
-                  href="https://www.facebook.com/Habitica"
+                  href="https://www.instagram.com/habitica/"
                   target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ $t('communityInstagram') }}
+                </a>
+              </div>
+              <div class="d-flex align-items-center mb-1">
+                <a
+                  class="social-circle mr-2"
+                  href="https://bsky.app/profile/habitica.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
                   <div
-                    class="social-icon facebook svg-icon"
+                    class="social-icon svg-icon"
+                    v-html="icons.bluesky"
+                  ></div>
+                </a>
+                <a
+                  href="https://bsky.app/profile/habitica.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Bluesky
+                </a>
+              </div>
+              <div class="d-flex align-items-center mb-1">
+                <a
+                  class="social-circle mr-2"
+                  href="https://www.facebook.com/Habitica/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <div
+                    class="social-icon svg-icon"
                     v-html="icons.facebook"
                   ></div>
                 </a>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <div class="col-12 col-md-8">
-              {{ $t('donateText3') }}
-            </div>
-            <div class="col-12 col-md-4">
-              <button
-                v-if="user"
-                class="btn btn-contribute btn-front btn-flat"
-                @click="donate()"
-              >
-                <div
-                  class="svg-icon heart"
-                  v-html="icons.heart"
-                ></div>
-                <div class="text">
-                  {{ $t('companyDonate') }}
-                </div>
-              </button>
-              <div
-                v-else
-                class="btn btn-contribute btn-front btn-flat"
-              >
                 <a
-                  href="https://habitica.fandom.com/wiki/Contributing_to_Habitica"
+                  href="https://www.facebook.com/Habitica/"
                   target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ $t('communityFacebook') }}
+                </a>
+              </div>
+              <div class="d-flex align-items-center">
+                <a
+                  class="social-circle mr-2"
+                  href="http://blog.habitrpg.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
                   <div
-                    class="svg-icon heart"
-                    v-html="icons.heart"
+                    class="social-icon svg-icon"
+                    v-html="icons.tumblr"
                   ></div>
-                  <div class="text">{{ $t('companyContribute') }}</div>
+                </a>
+                <a
+                  href="http://blog.habitrpg.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ $t('tumblr') }}
                 </a>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div class="row">
-        <div class="col-12">
-          <hr>
+      <div>
+        <div class="hr">
+          <div>
+            <hr>
+          </div>
         </div>
-      </div>
-      <div class="row">
-        <div class="col-12 col-md-5 text-center text-md-left">
-          © 2021 Habitica. All rights reserved.
-          <div
-            v-if="!IS_PRODUCTION && isUserLoaded"
-            class="debug float-left"
-          >
-            <button
-              class="btn btn-primary"
-              @click="debugMenuShown = !debugMenuShown"
-            >
-              Toggle Debug Menu
-            </button>
+        <!-- DESKTOP LEGAL -->
+        <div class="desktop d-flex justify-content-between align-items-center">
+          <div class="copyright">
+            <div>
+              © {{ currentYear }} Habitica. All rights reserved.
+            </div>
+          </div>
+          <div class="melior">
             <div
-              v-if="debugMenuShown"
-              class="debug-group"
+              class="logo svg svg-icon color"
+              v-html="icons.melior"
+            ></div>
+          </div>
+          <div class="privacy-terms">
+            <span class="privacy-policy">
+              <a
+                target="_blank"
+                rel="noopener noreferrer"
+                href="/static/privacy"
+              >{{ $t('privacy') }}</a>
+            </span>
+            <span class="terms">
+              <a
+                target="_blank"
+                rel="noopener noreferrer"
+                href="/static/terms"
+              >{{ $t('terms') }}</a>
+            </span>
+          </div>
+        </div>
+        <!-- MOBILE LEGAL -->
+        <div class="mobile">
+          <div class="copyright mx-auto mb-2">
+            <div>
+              © {{ currentYear }} Habitica. All rights reserved.
+            </div>
+          </div>
+          <div class="privacy-policy mx-auto mb-2">
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              href="/static/privacy"
+            >{{ $t('privacy') }}</a>
+          </div>
+          <div class="mobile-terms mx-auto mb-2">
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              href="/static/terms"
+            >{{ $t('terms') }}</a>
+          </div>
+          <div class="melior">
+            <div
+              class="logo svg svg-icon color"
+              v-html="icons.melior"
+            ></div>
+          </div>
+        </div>
+        <div
+          v-if="TIME_TRAVEL_ENABLED && user?.permissions?.fullAccess"
+          :key="lastTimeJump"
+          class="time-travel"
+        >
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(-1)"
+          >-1 Day</a>
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(-7)"
+          >-7 Days</a>
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(-30)"
+          >-30 Days</a>
+          <div class="my-2">
+            Time Traveling! It is {{ new Date().toLocaleDateString() }}
+            <a
+              class="btn btn-small"
+              @click="resetTime()"
             >
+              Reset
+            </a>
+          </div>
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(1)"
+          >+1 Day</a>
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(7)"
+          >+7 Days</a>
+          <a
+            class="btn btn-secondary mr-1"
+            @click="jumpTime(30)"
+          >+30 Days</a>
+        </div>
+        <div
+          v-if="DEBUG_ENABLED && isUserLoaded"
+          class="debug-toggle"
+        >
+          <button
+            class="debug btn-primary"
+            @click="debugMenuShown = !debugMenuShown"
+          >
+            Toggle Debug Menu
+          </button>
+          <div
+            v-if="debugMenuShown"
+            class="btn debug-toggle debug-group"
+          >
+            <div class="debug-pop">
               <a
                 class="btn btn-secondary"
                 @click="setHealthLow()"
-              >Health = 1</a>
+              >Reduce Health to 1</a>
               <a
                 class="btn btn-secondary"
                 @click="addMissedDay(1)"
@@ -290,34 +440,40 @@
               >Quest Progress Up</a>
               <a
                 class="btn btn-secondary"
-                @click="makeAdmin()"
-              >Make Admin</a>
+                @click="bossRage()"
+              >+ Boss Rage 😡</a>
               <a
                 class="btn btn-secondary"
-                @click="openModifyInventoryModal()"
-              >Modify Inventory</a>
+                @click="makeAdmin()"
+              >Make Admin</a>
+              <div class="d-flex align-items-center mt-2">
+                <input
+                  v-model.number="partyChatCount"
+                  type="number"
+                  min="1"
+                  class="form-control form-control-sm mr-2"
+                  style="width: 80px;"
+                >
+                <a
+                  class="btn btn-secondary"
+                  @click="seedPartyChat()"
+                >Send Party Chat Messages</a>
+              </div>
+              <div class="d-flex align-items-center mt-2">
+                <input
+                  v-model.number="inboxCount"
+                  type="number"
+                  min="1"
+                  class="form-control form-control-sm mr-2"
+                  style="width: 80px;"
+                >
+                <a
+                  class="btn btn-secondary"
+                  @click="seedInbox()"
+                >Send Inbox Messages</a>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="col-12 col-md-2 text-center">
-          <div
-            class="logo svg-icon"
-            v-html="icons.gryphon"
-          ></div>
-        </div>
-        <div class="col-12 col-md-5 text-center text-md-right my-1">
-          <span class="ml-4">
-            <a
-              target="_blank"
-              href="/static/privacy"
-            >{{ $t('privacy') }}</a>
-          </span>
-          <span class="ml-4">
-            <a
-              target="_blank"
-              href="/static/terms"
-            >{{ $t('terms') }}</a>
-          </span>
         </div>
       </div>
     </footer>
@@ -325,184 +481,386 @@
 </template>
 
 <style lang="scss" scoped>
+@import '@/assets/scss/colors.scss';
 .footer-row {
   margin: 0;
   flex: 0 1 auto;
   z-index: 10;
 }
-footer {
-  color: #c3c0c7;
-  padding-bottom: 3em;
-  a {
-    color: #2995cd;
-  }
+
+button {
+  border: none;
+  border-radius: 4px;
+  text-align: center;
+  line-height: 1.71;
+  font-weight: 700;
+  font-size: .875rem;
+  margin-bottom: 1rem;
+  padding: .5rem 1rem;
+  box-shadow: 0 1px 3px 0 rgb(26 24 29 / 12%), 0 1px 2px 0 rgb(26 24 29 / 24%);
 }
-h3 {
-  color: #878190;
-}
+
 ul {
-  padding-left: 0;
-  list-style-type: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
+
 li {
-  margin-bottom: 0.5em;
+  margin: 0 0 .5rem 0;
+  padding: 0;
 }
+
+.product { grid-area: product; }
+.company { grid-area: company; }
+.community { grid-area: community; }
+.support { grid-area: support; }
+.developers { grid-area: developers; }
 .social {
-  h3 {
-    text-align: right;
+  align-items: flex-start;
+  display: flex;
+  justify-content: flex-start;
+  grid-area: social;
+
+  ::v-deep svg {
+    background-color: $gray-500;
+    fill: $gray-200;
+    height: 24px;
+    width: 24px;
+  }
+
+  .d-flex:hover {
+    a {
+      color: $purple-300;
+    }
+    ::v-deep svg {
+      fill: $purple-300;
+    }
   }
 }
-.icons {
+
+// row 3
+.hr {
+  color: $gray-400;
+  grid-area: hr;
+}
+
+// row 4
+.copyright {
+  grid-area: copyright;
+  line-height: 1.71;
+}
+.melior { grid-area: melior; }
+.privacy-terms {
+  grid-area: privacy-terms;
   display: flex;
   justify-content: flex-end;
-  flex-shrink: 1;
+  line-height: 1.71;
 }
-// smaller than desktop
-@media only screen and (max-width: 992px) {
-  .social-circle {
-    height: 32px !important;
-    width: 32px !important;
-    margin-left: 0.75em !important;
+.terms {
+  padding-left: 16px;
+}
+.mobile {
+  display: none;
+}
+
+// row 5
+.debug-toggle { grid-area: debug-toggle;}
+.debog-pop {
+  grid-area: debug-pop;
+}
+
+.time-travel {
+  grid-area: time-travel;
+
+  a:hover {
+    text-decoration: none !important;
   }
 }
-//mobile view
-@media screen and (max-width: 770px) {
-  .footer-main {
-    display: flex;
-    flex-direction: column;
+
+footer {
+  background-color: $gray-500;
+  color: $gray-50;
+  padding: 32px 142px 40px;
+  a, a:not([href]) {
+    color: $gray-50;
   }
-  .logo-container {
-    order: 1;
+  a:hover {
+    color: $purple-300;
+    text-decoration: underline;
   }
 }
+
+h3 {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
 .social-circle {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #c3c0c7;
-  display: flex;
-  margin-left: 1em;
-  &:first-child {
-    margin-left: 0;
-  }
-  &:hover {
-    background-color: #a5a1ac;
-  }
-  .social-icon {
-    color: #e1e0e3;
-    width: 16px;
-    margin: auto;
-  }
-}
-.logo {
   width: 24px;
   height: 24px;
-  margin: 0 auto;
-  color: #e1e0e3;
-}
-.debug-group {
-  position: absolute;
-  background: #fff;
-  top: -300px;
-  border-radius: 2px;
-  padding: 2em;
-}
-.btn-contribute {
-  background: #c3c0c7;
-  box-shadow: none;
   border-radius: 4px;
-  font-family: Roboto Condensed, sans-serif;
-  &:hover {
-    background: #a5a1ac;
-    .text {
-      color: white;
-    }
+  background-color: $gray-50;
+  display: flex;
+
+  + a {
+    margin-top: 1px;
   }
+}
+
+.logo {
+  color: $gray-200;
+  height: 24px;
+  margin: 0px auto 5px;
+  width: 24px;
+}
+
+.terms {
+  padding-left: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.desktop {
+  display: none;
+}
+
+.debug {
+  border: 2px solid transparent;
+  box-shadow: 0 1px 3px 0 rgba($black, 0.12), 0 1px 2px 0 rgba($black, 0.24);
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  padding: 2px 12px;
+
+  &:hover {
+    box-shadow: 0 3px 6px 0 rgba($black, 0.12), 0 3px 6px 0 rgba($black, 0.24);
+  }
+  &:focus  {
+    border: 2px solid $purple-400 !important;
+    box-shadow: 0 3px 6px 0 rgba($black, 0.12), 0 3px 6px 0 rgba($black, 0.24);
+  }
+  :active {
+    border: 2px solid $purple-600 !important;
+    box-shadow: none;
+  }
+}
+
+.debug-group {
+  background-color: $gray-600;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px 0 rgba($black, 0.12), 0 1px 2px 0 rgba($black, 0.24);
+  font-weight: 700;
+  padding: 8px 16px;
+
+ .btn {
+    margin: 2px;
+  }
+
+  a:hover {
+    border: 2px solid transparent;
+    box-shadow: 0 1px 3px 0 rgba($black, 0.12), 0 1px 2px 0 rgba($black, 0.24);
+    text-decoration: none !important;
+  }
+}
+
+.btn-small {
+  background-color: $maroon-100;
+  border: 2px solid transparent;
+  color: $white !important;
+  line-height: 18px;
+  &:hover {
+    background-color: $maroon-100;
+    text-decoration: none !important;
+    border: 2px solid $maroon-100;
+  }
+}
+.btn-secondary {
+  padding: 2px 12px;
+}
+.btn-secondary a:hover {
+  text-decoration: none !important;
+}
+
+.btn-contribute {
+  border: 2px solid transparent;
+
   a {
     display: flex;
   }
-  .heart {
-    max-height: 25px;
-    width: 18px;
-    margin-right: 0.5em;
-    margin-bottom: 0.2em;
-  }
-  .text,
-  .heart {
+
+  .text {
     display: inline-block;
     vertical-align: bottom;
+    text-overflow: hidden;
   }
 }
-</style>
 
-<style lang="scss">
-.heart svg {
-  margin-top: 0.1em;
+// media breakpoints
+
+// Small devices (landscape phones, 576px and under)
+@media (max-width: 767.99px) {
+
+  // row 1
+  .product {
+    grid-area: product;
+    padding-top: 12px;
+  }
+  .company {
+    grid-area: company;
+    padding-top: 12px;
+  }
+
+  //row 2
+  .community {
+    grid-area: community;
+    padding-top: 12px;
+  }
+  .support {
+    grid-area: support;
+    padding-top: 12px;
+  }
+
+  //row 3
+  .developers {
+    grid-area: developers;
+    padding-top: 12px;
+  }
+  .social {
+    grid-area: social;
+    padding-top: 12px;
+  }
+
+  // row 7
+  .hr {
+    grid-area: hr;
+    padding-top: 8px;
+  }
+
+  .desktop {
+    .copyright, .melior, .privacy-terms {
+      display: none;
+    }
+  }
+
+  .mobile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  // row 12
+  .debug-toggle {
+    grid-area: debug-toggle;
+    width: 100%;
+  }
+
+  footer {
+    padding: 24px 16px;
+
+    .columns {
+      column-gap: 1.5rem;
+      display: grid !important;
+      grid-template-areas:
+        "product company"
+        "community support"
+        "developers social"
+        "time-travel time-travel"
+        "debug-toggle debug-toggle";
+      grid-template-columns: repeat(2, 2fr);
+      grid-template-rows: auto;
+    }
+  }
+  .btn-contribute {
+    width: 100%;
+  }
+  .debug {
+    width: 100%;
+  }
 }
-.facebook svg {
-  width: 10px;
-  margin: 0 auto;
-}
-footer {
-  &.expanded {
-    padding-left: 6em;
-    padding-right: 6em;
-    padding-top: 3em;
-    background: #e1e0e3;
-    color: #878190;
-    min-height: 408px;
-    a {
-      color: #878190;
-    }
-    .logo {
-      color: #c3c0c7;
-    }
-    @media screen and (max-width: 770px) {
-      padding-left: 1em;
-      padding-right: 1em;
-    }
+
+// Medium devices (tablets, 768px and under)
+@media (max-width: 1024px) and (min-width: 768px) {
+  footer {
+    padding: 24px 24px;
+  }
+
+  .desktop {
+    display: none;
   }
 }
 </style>
 
 <script>
+// modules
 import axios from 'axios';
 import moment from 'moment';
-import { mapState } from '@/libs/store';
-import gryphon from '@/assets/svg/gryphon.svg';
-import twitter from '@/assets/svg/twitter.svg';
-import facebook from '@/assets/svg/facebook.svg';
-import instagram from '@/assets/svg/instagram.svg';
-import heart from '@/assets/svg/heart.svg';
-import buyGemsModal from './payments/buyGemsModal.vue';
-import reportBug from '@/mixins/reportBug.js';
+import Vue from 'vue';
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production'; // eslint-disable-line no-process-env
+// images
+import melior from '@/assets/svg/melior.svg?raw';
+import bluesky from '@/assets/svg/bluesky.svg?raw';
+import facebook from '@/assets/svg/facebook.svg?raw';
+import instagram from '@/assets/svg/instagram.svg?raw';
+import tumblr from '@/assets/svg/tumblr.svg?raw';
+import heart from '@/assets/svg/heart.svg?raw';
+
+// components & modals
+import { mapState } from '@/libs/store';
+import buyGemsModal from './payments/buyGemsModal.vue';
+import privacyModal from './settings/privacyModal.vue';
+import reportBug from '@/mixins/reportBug.js';
+import { worldStateMixin } from '@/mixins/worldState';
+
+const DEBUG_ENABLED = import.meta.env.DEBUG_ENABLED === 'true';
+const TIME_TRAVEL_ENABLED = import.meta.env.TIME_TRAVEL_ENABLED === 'true';
+
+let sinon;
+if (import.meta.env.TIME_TRAVEL_ENABLED === 'true') {
+  (async () => {
+    sinon = await import('sinon');
+  })();
+}
+
 export default {
   components: {
     buyGemsModal,
+    privacyModal,
   },
-  mixins: [reportBug],
+  mixins: [
+    reportBug,
+    worldStateMixin,
+  ],
   data () {
     return {
       icons: Object.freeze({
-        gryphon,
-        twitter,
+        melior,
+        bluesky,
         facebook,
         instagram,
+        tumblr,
         heart,
       }),
       debugMenuShown: false,
-      IS_PRODUCTION,
+      DEBUG_ENABLED,
+      TIME_TRAVEL_ENABLED,
+      lastTimeJump: null,
+      partyChatCount: 450,
+      inboxCount: 450,
     };
   },
   computed: {
     ...mapState({ user: 'user.data' }),
     ...mapState(['isUserLoaded']),
     getDataDisplayToolUrl () {
-      const base = 'https://oldgods.net/habitrpg/habitrpg_user_data_display.html';
+      const base = 'https://tools.habitica.com/';
       if (!this.user) return null;
       return `${base}?uuid=${this.user._id}`;
+    },
+    currentYear () {
+      const currentDate = new Date();
+      return currentDate.getFullYear();
     },
   },
   methods: {
@@ -551,6 +909,31 @@ export default {
         'stats.mp': this.user.stats.mp + 10000,
       });
     },
+    async jumpTime (amount) {
+      const response = await axios.post('/api/v4/debug/jump-time', { offsetDays: amount });
+      setTimeout(() => {
+        if (amount > 0) {
+          Vue.config.clock.jump(amount * 24 * 60 * 60 * 1000);
+        } else {
+          Vue.config.clock.setSystemTime(moment().add(amount, 'days').toDate());
+        }
+        this.lastTimeJump = response.data.data.time;
+        this.triggerGetWorldState(true);
+      }, 1000);
+    },
+    async resetTime () {
+      const response = await axios.post('/api/v4/debug/jump-time', { reset: true });
+      const time = new Date(response.data.data.time);
+      setTimeout(() => {
+        Vue.config.clock.restore();
+        Vue.config.clock = sinon.useFakeTimers({
+          now: time,
+          shouldAdvanceTime: true,
+        });
+        this.lastTimeJump = response.data.data.time;
+        this.triggerGetWorldState(true);
+      }, 1000);
+    },
     addExp () {
       // @TODO: Name these variables better
       let exp = 0;
@@ -574,17 +957,46 @@ export default {
       //  @TODO:  Notification.text('Quest progress increased');
       //  @TODO:  User.sync();
     },
+    async bossRage () {
+      await axios.post('/api/v4/debug/boss-rage');
+    },
     async makeAdmin () {
       await axios.post('/api/v4/debug/make-admin');
       // @TODO: Notification.text('You are now an admin!
-      // Go to the Hall of Heroes to change your contributor level.');
+      // Reload the website then go to Help > Admin Panel to set contributor level, etc.');
       // @TODO: sync()
     },
-    openModifyInventoryModal () {
-      this.$root.$emit('bv::show::modal', 'modify-inventory');
+    async seedPartyChat () {
+      try {
+        const count = this.partyChatCount;
+        if (!Number.isInteger(count) || count < 1) {
+          window.alert('Please enter a positive integer'); // eslint-disable-line no-alert
+          return;
+        }
+        await axios.post('/api/v4/debug/seed-party-chat', { messageCount: count });
+        window.alert(`Successfully sent ${count} messages to your party chat!`); // eslint-disable-line no-alert
+      } catch (e) {
+        window.alert(e.response?.data?.message || 'Error sending party chat messages'); // eslint-disable-line no-alert
+      }
+    },
+    async seedInbox () {
+      try {
+        const count = this.inboxCount;
+        if (!Number.isInteger(count) || count < 1) {
+          window.alert('Please enter a positive integer'); // eslint-disable-line no-alert
+          return;
+        }
+        await axios.post('/api/v4/debug/seed-inbox', { messageCount: count });
+        window.alert(`Successfully sent ${count} messages to your inbox!`); // eslint-disable-line no-alert
+      } catch (e) {
+        window.alert(e.response?.data?.message || 'Error sending inbox messages'); // eslint-disable-line no-alert
+      }
     },
     donate () {
       this.$root.$emit('bv::show::modal', 'buy-gems', { alreadyTracked: true });
+    },
+    showBailey () {
+      this.$root.$emit('bv::show::modal', 'new-stuff');
     },
   },
 };

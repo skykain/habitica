@@ -23,6 +23,7 @@ import {
 
 const BASE_URL = nconf.get('BASE_URL');
 const PAYPAL_MODE = nconf.get('PAYPAL_MODE');
+const PAYPAL_DISABLE_IPN_VERIFICATION = nconf.get('PAYPAL_DISABLE_IPN_VERIFICATION') === 'true';
 const { i18n } = shared;
 
 // This is the plan.id for paypal subscriptions.
@@ -77,7 +78,9 @@ api.paypalBillingAgreementCancel = util
 api.ipnVerifyAsync = util.promisify(paypalIpn.verify.bind(paypalIpn));
 
 api.checkout = async function checkout (options = {}) {
-  const { gift, user, gemsBlock: gemsBlockKey } = options;
+  const {
+    gift, gemsBlock: gemsBlockKey, sku, user,
+  } = options;
 
   let amount;
   let gemsBlock;
@@ -99,12 +102,17 @@ api.checkout = async function checkout (options = {}) {
       amount = Number(shared.content.subscriptionBlocks[gift.subscription.key].price).toFixed(2);
       description = 'mo. Habitica Subscription (Gift)';
     }
+  } else if (sku) {
+    if (sku === 'Pet-Gryphatrice-Jubilant') {
+      description = 'Jubilant Gryphatrice';
+      amount = 9.99;
+    }
   } else {
     gemsBlock = getGemsBlock(gemsBlockKey);
     amount = gemsBlock.price / 100;
   }
 
-  if (!gift || gift.type === 'gems') {
+  if (gemsBlock || (gift && gift.type === 'gems')) {
     const receiver = gift ? gift.member : user;
     const receiverCanGetGems = await receiver.canGetGems();
     if (!receiverCanGetGems) throw new NotAuthorized(shared.i18n.t('groupPolicyCannotGetGems', receiver.preferences.language));
@@ -146,10 +154,10 @@ api.checkout = async function checkout (options = {}) {
 
 api.checkoutSuccess = async function checkoutSuccess (options = {}) {
   const {
-    user, gift, gemsBlock: gemsBlockKey, paymentId, customerId,
+    user, gift, gemsBlock: gemsBlockKey, paymentId, customerId, sku,
   } = options;
 
-  let method = 'buyGems';
+  let method = sku ? 'buySkuItem' : 'buyGems';
   const data = {
     user,
     customerId,
@@ -164,6 +172,8 @@ api.checkoutSuccess = async function checkoutSuccess (options = {}) {
 
     data.paymentMethod = 'PayPal (Gift)';
     data.gift = gift;
+  } else if (sku) {
+    data.sku = sku;
   } else {
     data.gemsBlock = getGemsBlock(gemsBlockKey);
   }
@@ -212,6 +222,51 @@ api.subscribeSuccess = async function subscribeSuccess (options = {}) {
     sub: block,
     headers,
   });
+};
+
+api.getSubscriptionPaymentDetails = async function getSubscriptionPaymentDetails (options = {}) {
+  const { user, groupId } = options;
+  let customerId;
+  if (groupId) {
+    const groupFields = basicGroupFields.concat(' purchased');
+    const group = await Group.getGroup({
+      user, groupId, populateLeader: false, groupFields,
+    });
+
+    if (!group) {
+      throw new NotFound(i18n.t('groupNotFound'));
+    }
+
+    if (group.leader !== user._id) {
+      throw new NotAuthorized(i18n.t('onlyGroupLeaderCanManageSubscription'));
+    }
+    customerId = group.purchased.plan.customerId;
+  } else {
+    customerId = user.purchased.plan.customerId;
+  }
+  if (!customerId) throw new NotAuthorized(i18n.t('missingSubscription'));
+
+  const customer = await this.paypalBillingAgreementGet(customerId);
+  if (!customer) throw new NotFound(i18n.t('subscriptionNotFound'));
+
+  console.log('PayPal subscription details:', customer);
+  return {
+    customerId: customer.id,
+    originalPurchaseDate: customer.start_date,
+    expirationDate: customer.agreement_details.ended_at
+      ? customer.agreement_details.ended_at
+      : null,
+    nextPaymentDate: customer.agreement_details.next_billing_date
+      ? customer.agreement_details.next_billing_date
+      : null,
+    lastPaymentDate: customer.agreement_details.last_payment_date
+      ? customer.agreement_details.last_payment_date
+      : null,
+    productId: customer.description,
+    transactionId: customer.id,
+    isCanceled: customer.agreement_details.state === 'Inactive',
+    failedPayments: customer.agreement_details.failed_payment_count,
+  };
 };
 
 /**
@@ -266,38 +321,25 @@ api.subscribeCancel = async function subscribeCancel (options = {}) {
   });
 };
 
-api.ipn = async function ipnApi (options = {}) {
-  await this.ipnVerifyAsync(options, {
-    allow_sandbox: PAYPAL_MODE === 'sandbox',
-  });
-
-  const { txn_type, recurring_payment_id } = options;
-
-  const ipnAcceptableTypes = [
-    'recurring_payment_profile_cancel',
-    'recurring_payment_failed',
-    'recurring_payment_expired',
-    'subscr_cancel',
-    'subscr_failed',
-  ];
-
-  if (ipnAcceptableTypes.indexOf(txn_type) === -1) return;
-
+async function cancelSubscription (transactionType, paymentId) {
   // @TODO: Should this request billing date?
-  const user = await User.findOne({ 'purchased.plan.customerId': recurring_payment_id }).exec();
+  const user = await User.findOne({ 'purchased.plan.customerId': paymentId }).exec();
   if (user) {
     // If the user has already cancelled the subscription, return
     // Otherwise the subscription would be cancelled twice
     // resulting in the loss of subscription credits
     if (user.hasCancelled()) return;
 
-    await payments.cancelSubscription({ user, paymentMethod: this.constants.PAYMENT_METHOD });
+    if (transactionType === 'recurring_payment_skipped') {
+      await api.paypalBillingAgreementCancel(paymentId, { note: 'Missed payment' });
+    }
+    await payments.cancelSubscription({ user, paymentMethod: api.constants.PAYMENT_METHOD });
     return;
   }
 
   const groupFields = basicGroupFields.concat(' purchased');
   const group = await Group
-    .findOne({ 'purchased.plan.customerId': recurring_payment_id })
+    .findOne({ 'purchased.plan.customerId': paymentId })
     .select(groupFields)
     .exec();
 
@@ -309,8 +351,38 @@ api.ipn = async function ipnApi (options = {}) {
 
     await payments.cancelSubscription({
       groupId: group._id,
-      paymentMethod: this.constants.PAYMENT_METHOD,
+      paymentMethod: api.constants.PAYMENT_METHOD,
     });
+  }
+}
+
+const repayTypes = [
+  'recurring_payment',
+  'subscr_payment',
+];
+
+const cancelTypes = [
+  'recurring_payment_profile_cancel',
+  'recurring_payment_failed',
+  'recurring_payment_expired',
+  'recurring_payment_skipped',
+  'subscr_cancel',
+  'subscr_failed',
+];
+
+api.ipn = async function ipnApi (options = {}) {
+  if (!PAYPAL_DISABLE_IPN_VERIFICATION) {
+    await this.ipnVerifyAsync(options, {
+      allow_sandbox: PAYPAL_MODE === 'sandbox',
+    });
+  }
+
+  const { txn_type, recurring_payment_id } = options;
+
+  if (repayTypes.indexOf(txn_type) !== -1) {
+    payments.handleSubscriptionRenewal(recurring_payment_id);
+  } else if (cancelTypes.indexOf(txn_type) !== -1) {
+    await cancelSubscription(txn_type, recurring_payment_id);
   }
 };
 

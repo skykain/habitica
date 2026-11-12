@@ -88,7 +88,7 @@ function toSourceMapRegex (token) {
   let regexStr = '';
 
   if (type === 'code_block') {
-    regexStr = withOptionalIndentation(contentRegex);
+    regexStr = withOptionalIndentation(contentRegex.replace(/\n$/, ''));
   } else if (type === 'fence') {
     regexStr = `\\s*${markup}.*\n${withOptionalIndentation(contentRegex)}\\s*${markup}`;
   } else if (type === 'code_inline') {
@@ -165,17 +165,22 @@ export default async function highlightMentions (text) {
   if (mentions && mentions.length <= 5) {
     const usernames = mentions.map(mention => mention.substr(1));
     members = await User
-      .find({ 'auth.local.username': { $in: usernames }, 'flags.verifiedUsername': true })
+      .find({
+        $or: usernames.map(uname => ({ 'auth.local.lowerCaseUsername': uname.toLowerCase() })),
+        'flags.verifiedUsername': true,
+      })
       .select(['auth.local.username', '_id', 'preferences.pushNotifications', 'pushDevices', 'party', 'guilds'])
       .lean()
       .exec();
     const baseUrl = determineBaseUrl();
     members.forEach(member => {
       const { username } = member.auth.local;
-      const regex = new RegExp(`@${username}(?![\\-\\w])`, 'g');
-      const replacement = `[@${username}](${baseUrl}/profile/${member._id})`;
+      const regex = new RegExp(`@${escapeRegExp(username)}(?![\\-\\w])`, 'gi');
 
-      textBlocks.transformValidBlocks(blockText => blockText.replace(regex, replacement));
+      textBlocks.transformValidBlocks(blockText => blockText.replace(regex, match => {
+        const mentionedUsername = match.substr(1);
+        return `[@${mentionedUsername}](${baseUrl}/profile/${member._id})`;
+      }));
     });
   }
 

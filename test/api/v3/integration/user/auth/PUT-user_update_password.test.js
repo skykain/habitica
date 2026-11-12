@@ -17,7 +17,9 @@ describe('PUT /user/auth/update-password', async () => {
   const newPassword = 'new-password';
 
   beforeEach(async () => {
-    user = await generateUser();
+    user = await generateUser(
+      { 'auth.local.passwordResetCode': 'passwordResetCode' },
+    );
   });
 
   it('successfully changes the password', async () => {
@@ -27,9 +29,39 @@ describe('PUT /user/auth/update-password', async () => {
       newPassword,
       confirmPassword: newPassword,
     });
-    expect(response).to.eql({});
+
+    expect(response).to.exist;
+    expect(response.apiToken).to.exist;
+
     await user.sync();
     expect(user.auth.local.hashed_password).to.not.eql(previousHashedPassword);
+  });
+
+  it('changes the apiToken on password change', async () => {
+    const previousToken = user.apiToken;
+    const response = await user.put(ENDPOINT, {
+      password,
+      newPassword,
+      confirmPassword: newPassword,
+    });
+
+    const newToken = response.apiToken;
+    expect(newToken).to.exist;
+
+    await user.sync();
+    expect(user.apiToken).to.eql(newToken);
+    expect(user.apiToken).to.not.eql(previousToken);
+  });
+
+  it('blanks the reset code on password change', async () => {
+    await user.put(ENDPOINT, {
+      password,
+      newPassword,
+      confirmPassword: newPassword,
+    });
+
+    await user.sync();
+    expect(user.auth.local.passwordResetCode).to.not.exist;
   });
 
   it('returns an error when confirmPassword does not match newPassword', async () => {
@@ -96,6 +128,20 @@ describe('PUT /user/auth/update-password', async () => {
     });
   });
 
+  it('returns an error when newPassword is too long', async () => {
+    const body = {
+      password,
+      newPassword: '12345678910111213141516171819202122232425262728293031323334353637383940',
+      confirmPassword: '12345678910111213141516171819202122232425262728293031323334353637383940',
+    };
+
+    await expect(user.put(ENDPOINT, body)).to.eventually.be.rejected.and.eql({
+      code: 400,
+      error: 'BadRequest',
+      message: t('invalidReqParams'),
+    });
+  });
+
   it('returns an error when confirmPassword is missing', async () => {
     const body = {
       password,
@@ -114,7 +160,7 @@ describe('PUT /user/auth/update-password', async () => {
     const salt = sha1MakeSalt();
     const sha1HashedPassword = sha1EncryptPassword(textPassword, salt);
 
-    await user.update({
+    await user.updateOne({
       'auth.local.hashed_password': sha1HashedPassword,
       'auth.local.passwordHashMethod': 'sha1',
       'auth.local.salt': salt,

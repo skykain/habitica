@@ -1,7 +1,8 @@
 import moment from 'moment';
 import {
-  defaults, map, flatten, flow, compact, uniq, partialRight,
+  defaults, map, flatten, flow, compact, uniq, partialRight, remove,
 } from 'lodash';
+import { v4 as uuid } from 'uuid';
 import common from '../../../common';
 
 import { // eslint-disable-line import/no-cycle
@@ -23,6 +24,7 @@ import amazonPayments from '../../libs/payments/amazon'; // eslint-disable-line 
 import stripePayments from '../../libs/payments/stripe'; // eslint-disable-line import/no-cycle
 import paypalPayments from '../../libs/payments/paypal'; // eslint-disable-line import/no-cycle
 import { model as NewsPost } from '../newsPost';
+import { TransactionModel as Transaction } from '../transaction';
 
 const { daysSince } = common;
 
@@ -121,11 +123,15 @@ schema.methods.getObjectionsToInteraction = function getObjectionsToInteraction 
 schema.methods.sendMessage = async function sendMessage (userToReceiveMessage, options) {
   const sender = this;
   const senderMsg = options.senderMsg || options.receiverMsg;
+  const { fakeSending } = options;
   // whether to save users after sending the message, defaults to true
   const saveUsers = options.save !== false;
 
+  const uniqueMessageId = uuid();
+
   const newReceiverMessage = new Inbox({
     ownerId: userToReceiveMessage._id,
+    uniqueMessageId,
   });
   Object.assign(newReceiverMessage, messageDefaults(options.receiverMsg, sender));
   setUserStyles(newReceiverMessage, sender);
@@ -160,21 +166,23 @@ schema.methods.sendMessage = async function sendMessage (userToReceiveMessage, o
   // Do not add the message twice when sending it to yourself
   let newSenderMessage;
 
-  if (!sendingToYourself) {
+  if (!sendingToYourself || fakeSending) {
     newSenderMessage = new Inbox({
       sent: true,
       ownerId: sender._id,
+      uniqueMessageId,
     });
     Object.assign(newSenderMessage, messageDefaults(senderMsg, userToReceiveMessage));
     setUserStyles(newSenderMessage, sender);
   }
 
-  const promises = [newReceiverMessage.save()];
-  if (!sendingToYourself) promises.push(newSenderMessage.save());
+  const promises = [];
+  if (!fakeSending) promises.push(newReceiverMessage.save());
+  if (!sendingToYourself || fakeSending) promises.push(newSenderMessage.save());
 
   if (saveUsers) {
     promises.push(sender.save());
-    if (!sendingToYourself) promises.push(userToReceiveMessage.save());
+    if (!sendingToYourself && !fakeSending) promises.push(userToReceiveMessage.save());
   }
 
   await Promise.all(promises);
@@ -215,7 +223,10 @@ schema.methods.addNotification = function addUserNotification (type, data = {}, 
  * @param  data  The data to add to the notification
  */
 schema.statics.pushNotification = async function pushNotification (
-  query, type, data = {}, seen = false,
+  query,
+  type,
+  data = {},
+  seen = false,
 ) {
   const newNotification = new UserNotification({ type, data, seen });
 
@@ -224,11 +235,14 @@ schema.statics.pushNotification = async function pushNotification (
     throw validationResult;
   }
 
-  await this.update(
+  await this.updateMany(
     query,
     { $push: { notifications: newNotification.toObject() } },
-    { multi: true },
   ).exec();
+};
+
+schema.statics.hasPermission = function hasPermission (permissions, permission) {
+  return Boolean(permissions && (permissions[permission] || permissions.fullAccess));
 };
 
 /**
@@ -241,11 +255,17 @@ schema.methods.addAchievement = function addAchievement (achievement) {
   if (!achievementData) throw new Error(`Achievement ${achievement} does not exist.`);
 
   this.achievements[achievement] = true;
+  const { language } = this.preferences;
 
   this.notifications.push({
     type: 'ACHIEVEMENT',
     data: {
       achievement,
+      icon: achievementData.icon,
+      message: common.i18n.t(achievementData.titleKey, language),
+      modalText: achievementData.modalTextKey
+        ? common.i18n.t(achievementData.modalTextKey, language)
+        : common.i18n.t(achievementData.textKey, language),
     },
     seen: false,
   });
@@ -273,13 +293,12 @@ schema.statics.addAchievementUpdate = async function addAchievementUpdate (query
   const validationResult = newNotification.validateSync();
   if (validationResult) throw validationResult;
 
-  await this.update(
+  await this.updateMany(
     query,
     {
       $push: { notifications: newNotification.toObject() },
       $set: { [`achievements.${achievement}`]: true },
     },
-    { multi: true },
   ).exec();
 };
 
@@ -358,14 +377,14 @@ schema.methods.getUtcOffset = function getUtcOffset () {
   return common.fns.getUtcOffset(this);
 };
 
-schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
+schema.statics.daysUserHasMissed = function daysUserHasMissed (user, now, req = {}) {
   // If the user's timezone has changed (due to travel or daylight savings),
   // cron can be triggered twice in one day, so we check for that and use
   // both timezones to work out if cron should run.
   // CDS = Custom Day Start time.
-  let timezoneUtcOffsetFromUserPrefs = this.getUtcOffset();
-  const timezoneUtcOffsetAtLastCron = Number.isFinite(this.preferences.timezoneOffsetAtLastCron)
-    ? -this.preferences.timezoneOffsetAtLastCron
+  let timezoneUtcOffsetFromUserPrefs = common.fns.getUtcOffset(user);
+  const timezoneUtcOffsetAtLastCron = Number.isFinite(user.preferences.timezoneOffsetAtLastCron)
+    ? -user.preferences.timezoneOffsetAtLastCron
     : timezoneUtcOffsetFromUserPrefs;
 
   let timezoneUtcOffsetFromBrowser = typeof req.header === 'function' && -Number(req.header('x-user-timezoneoffset'));
@@ -377,12 +396,16 @@ schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
   if (timezoneUtcOffsetFromBrowser !== timezoneUtcOffsetFromUserPrefs) {
     // The user's browser has just told Habitica that the user's timezone has
     // changed so store and use the new zone.
-    this.preferences.timezoneOffset = -timezoneUtcOffsetFromBrowser;
+    user.preferences.timezoneOffset = -timezoneUtcOffsetFromBrowser;
     timezoneUtcOffsetFromUserPrefs = timezoneUtcOffsetFromBrowser;
   }
 
+  let lastCronTime = user.lastCron;
+  if (user.auth.timestamps.loggedIn < lastCronTime) {
+    lastCronTime = user.auth.timestamps.loggedIn;
+  }
   // How many days have we missed using the user's current timezone:
-  let daysMissed = daysSince(this.lastCron, defaults({ now }, this.preferences));
+  let daysMissed = daysSince(lastCronTime, defaults({ now }, user.preferences));
 
   if (timezoneUtcOffsetAtLastCron !== timezoneUtcOffsetFromUserPrefs) {
     // Give the user extra time based on the difference in timezones
@@ -394,10 +417,10 @@ schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
     // Since cron last ran, the user's timezone has changed.
     // How many days have we missed using the old timezone:
     const daysMissedNewZone = daysMissed;
-    const daysMissedOldZone = daysSince(this.lastCron, defaults({
+    const daysMissedOldZone = daysSince(lastCronTime, defaults({
       now,
       timezoneUtcOffsetOverride: timezoneUtcOffsetAtLastCron,
-    }, this.preferences));
+    }, user.preferences));
 
     if (timezoneUtcOffsetAtLastCron > timezoneUtcOffsetFromUserPrefs) {
       // The timezone change was in the unsafe direction.
@@ -434,12 +457,12 @@ schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
         const timezoneOffsetDiff = timezoneUtcOffsetFromUserPrefs - timezoneUtcOffsetAtLastCron;
         // e.g., for dangerous zone change: -300 - -240 = -60 or 600 - 660= -60
 
-        this.lastCron = moment(this.lastCron).subtract(timezoneOffsetDiff, 'minutes');
+        user.lastCron = moment(lastCronTime).subtract(timezoneOffsetDiff, 'minutes');
         // NB: We don't change this.auth.timestamps.loggedin so that will still record
         // the time that the previous cron actually ran.
         // From now on we can ignore the old timezone:
         // This is still timezoneOffset for backwards compatibility reasons.
-        this.preferences.timezoneOffsetAtLastCron = -timezoneUtcOffsetAtLastCron;
+        user.preferences.timezoneOffsetAtLastCron = -timezoneUtcOffsetAtLastCron;
       } else {
         // Both old and new timezones indicate that cron should
         // NOT run.
@@ -459,6 +482,10 @@ schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
   }
 
   return { daysMissed, timezoneUtcOffsetFromUserPrefs };
+};
+
+schema.methods.daysUserHasMissed = function daysUserHasMissed (now, req = {}) {
+  return schema.statics.daysUserHasMissed(this, now, req);
 };
 
 async function getUserGroupData (user) {
@@ -497,12 +524,31 @@ schema.methods.isMemberOfGroupPlan = async function isMemberOfGroupPlan () {
   return groups.some(g => g.hasActiveGroupPlan());
 };
 
+schema.methods.teamsLed = async function teamsLed () {
+  const user = this;
+  const groups = await getUserGroupData(user);
+
+  remove(groups, group => !group.hasActiveGroupPlan);
+  remove(groups, group => user._id !== group.leader);
+
+  const groupIds = [];
+  groups.forEach(group => {
+    groupIds.push(group._id);
+  });
+
+  return groupIds;
+};
+
 schema.methods.isAdmin = function isAdmin () {
   return Boolean(this.contributor && this.contributor.admin);
 };
 
 schema.methods.isNewsPoster = function isNewsPoster () {
-  return Boolean(this.contributor && this.contributor.newsPoster);
+  return this.hasPermission('news');
+};
+
+schema.methods.hasPermission = function hasPermission (permission) {
+  return schema.statics.hasPermission(this.permissions, permission);
 };
 
 // When converting to json add inbox messages from the Inbox collection
@@ -524,4 +570,61 @@ schema.methods.getSecretData = function getSecretData () {
   const user = this;
 
   return user.secret;
+};
+
+schema.methods.getFlagData = function getFlagData () {
+  const user = this;
+
+  return user.profile.flags;
+};
+
+schema.methods.updateBalance = async function updateBalance (
+  amount,
+  transactionType,
+  reference,
+  referenceText,
+) {
+  this.balance += amount;
+
+  if (transactionType === 'buy_gold') {
+    // Bulk these together in case the user is not using the bulk-buy feature
+    const lastTransaction = await Transaction.findOne(
+      { userId: this._id },
+      null,
+      { sort: { createdAt: -1 } },
+    );
+    if (lastTransaction.transactionType === transactionType) {
+      lastTransaction.amount += amount;
+      await lastTransaction.save();
+    }
+  }
+
+  await Transaction.create({
+    currency: 'gems',
+    userId: this._id,
+    transactionType,
+    amount,
+    reference,
+    referenceText,
+    currentAmount: this.balance,
+  });
+};
+
+schema.methods.updateHourglasses = async function updateHourglasses (
+  amount,
+  transactionType,
+  reference,
+  referenceText,
+) {
+  this.purchased.plan.consecutive.trinkets += amount;
+
+  await Transaction.create({
+    currency: 'hourglasses',
+    userId: this._id,
+    transactionType,
+    amount,
+    reference,
+    referenceText,
+    currentAmount: this.purchased.plan.consecutive.trinkets,
+  });
 };

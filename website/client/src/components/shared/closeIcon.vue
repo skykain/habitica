@@ -1,6 +1,11 @@
 <template>
   <button
     title="close dialog"
+    :style="{
+      '--icon-color': iconColor,
+      '--icon-color-hover': iconColorHover,
+    }"
+    :class="{'purple': purple}"
     @click="$emit('click', $event)"
   >
     <div
@@ -12,10 +17,11 @@
 </template>
 
 <script>
-import svgClose from '@/assets/svg/close.svg';
+import svgClose from '@/assets/svg/close.svg?raw';
 
 export default {
   name: 'CloseIcon',
+  props: ['iconColor', 'iconColorHover', 'purple'],
   data () {
     return {
       icons: Object.freeze({
@@ -27,7 +33,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-  @import '~@/assets/scss/colors.scss';
+  @import '@/assets/scss/colors.scss';
 
   button {
     position: absolute;
@@ -43,13 +49,18 @@ export default {
     width: 1rem;
     height: 1rem;
 
+    &.purple {
+      --icon-color: #{$purple-400};
+      --icon-color-hover: #{$purple-500};
+    }
+
     ::v-deep svg path {
-      stroke: $gray-200;
+      stroke: var(--icon-color, #{$gray-200});
     }
 
     &:hover {
       ::v-deep svg path {
-        stroke: $gray-100;
+        stroke: var(--icon-color-hover, #{$gray-100});
       }
     }
   }

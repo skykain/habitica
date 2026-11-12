@@ -40,7 +40,7 @@ const api = {};
 api.createTag = {
   method: 'POST',
   url: '/tags',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
 
@@ -69,7 +69,7 @@ api.createTag = {
 api.getTags = {
   method: 'GET',
   url: '/tags',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ leanUser: true, userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
     res.respond(200, user.tags);
@@ -95,7 +95,7 @@ api.getTags = {
 api.getTag = {
   method: 'GET',
   url: '/tags/:tagId',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ leanUser: true, userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
 
@@ -133,7 +133,7 @@ api.getTag = {
 api.updateTag = {
   method: 'PUT',
   url: '/tags/:tagId',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
 
@@ -175,7 +175,7 @@ api.updateTag = {
 api.reorderTags = {
   method: 'POST',
   url: '/reorder-tags',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
 
@@ -215,7 +215,7 @@ api.reorderTags = {
 api.deleteTag = {
   method: 'DELETE',
   url: '/tags/:tagId',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({ userFieldsToInclude: ['tags'] })],
   async handler (req, res) {
     const { user } = res.locals;
 
@@ -227,7 +227,7 @@ api.deleteTag = {
     const tagFound = find(user.tags, tag => tag.id === req.params.tagId);
     if (!tagFound) throw new NotFound(res.t('tagNotFound'));
 
-    await user.update({
+    await user.updateOne({
       $pull: { tags: { id: tagFound.id } },
     }).exec();
 
@@ -237,13 +237,13 @@ api.deleteTag = {
     user._v += 1;
 
     // Remove from all the tasks TODO test
-    await Tasks.Task.update({
+    await Tasks.Task.updateMany({
       userId: user._id,
     }, {
       $pull: {
         tags: tagFound.id,
       },
-    }, { multi: true }).exec();
+    }).exec();
 
     res.respond(200, {});
   },

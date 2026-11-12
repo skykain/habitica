@@ -1,6 +1,6 @@
 import moment from 'moment';
 
-import { startOfDay, daysSince } from '../../../website/common/script/cron';
+import { startOfDay, daysSince, getPlanContext } from '../../../website/common/script/cron';
 
 function localMoment (timeString, utcOffset) {
   return moment(timeString).utcOffset(utcOffset, true);
@@ -179,6 +179,51 @@ describe('cron utility functions', () => {
       const result = daysSince(localMoment('1989-11-08', -timezoneOffset), options);
 
       expect(result).to.equal(0);
+    });
+  });
+
+  describe('getPlanContext', () => {
+    function baseUserData (count, offset, planId) {
+      return {
+        purchased: {
+          plan: {
+            consecutive: {
+              count,
+              offset,
+              gemCapExtra: 26,
+              trinkets: 19,
+            },
+            quantity: 1,
+            extraMonths: 0,
+            gemsBought: 0,
+            owner: '116b4133-8fb7-43f2-b0de-706621a8c9d8',
+            nextBillingDate: null,
+            nextPaymentProcessing: null,
+            planId,
+            customerId: 'group-plan',
+            dateUpdated: '2022-05-10T03:00:00.144+01:00',
+            paymentMethod: 'Group Plan',
+            dateTerminated: null,
+            lastBillingDate: null,
+            dateCreated: '2017-02-10T19:00:00.355+01:00',
+          },
+        },
+      };
+    }
+
+    it('elapsedMonths is 0 if its the same month', () => {
+      const user = baseUserData(60, 0, 'group_plan_auto');
+
+      const planContext = getPlanContext(user, new Date(2022, 4, 20));
+      expect(planContext.elapsedMonths).to.equal(0);
+    });
+
+    it('elapsedMonths is 1 after one month', () => {
+      const user = baseUserData(60, 0, 'group_plan_auto');
+
+      const planContext = getPlanContext(user, new Date(2022, 5, 11));
+
+      expect(planContext.elapsedMonths).to.equal(1);
     });
   });
 });

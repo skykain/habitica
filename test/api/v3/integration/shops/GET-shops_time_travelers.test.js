@@ -5,9 +5,15 @@ import {
 
 describe('GET /shops/time-travelers', () => {
   let user;
+  let clock;
 
   beforeEach(async () => {
     user = await generateUser();
+    clock = sinon.useFakeTimers({ now: new Date('2024-06-08'), toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    clock.restore();
   });
 
   it('returns a valid shop object', async () => {
@@ -39,7 +45,7 @@ describe('GET /shops/time-travelers', () => {
   });
 
   it('returns active shop notes and imageName if user has trinkets', async () => {
-    await user.update({
+    await user.updateOne({
       'purchased.plan.consecutive.trinkets': 1,
     });
 
@@ -57,7 +63,7 @@ describe('GET /shops/time-travelers', () => {
   });
 
   it('does not return mystery sets that are already owned', async () => {
-    await user.update({
+    await user.updateOne({
       'items.gear.owned': {
         head_mystery_201606: true, // eslint-disable-line camelcase
         armor_mystery_201606: true, // eslint-disable-line camelcase
@@ -72,7 +78,7 @@ describe('GET /shops/time-travelers', () => {
   });
 
   it('does not return pets and mounts that user already owns', async () => {
-    await user.update({
+    await user.updateOne({
       'items.mounts': {
         'MantisShrimp-Base': true,
       },
@@ -94,5 +100,23 @@ describe('GET /shops/time-travelers', () => {
 
     expect(mammothPet).to.not.exist;
     expect(mantisShrimp).to.not.exist;
+  });
+
+  describe('localizes the shops content', () => {
+    it('from the users locale', async () => {
+      await user.updateOne({ 'preferences.language': 'es' });
+      const shop = await user.get('/shops/time-travelers');
+
+      expect(shop.text).to.eql(t('timeTravelers', {}, 'es'));
+      expect(shop.notes).to.eql(t('timeTravelersPopoverNoSubMobile', {}, 'es'));
+    });
+
+    it('from the passed locale', async () => {
+      await user.updateOne({ 'preferences.language': 'es' });
+      const shop = await user.get('/shops/time-travelers?lang=de');
+
+      expect(shop.text).to.eql(t('timeTravelers', {}, 'de'));
+      expect(shop.notes).to.eql(t('timeTravelersPopoverNoSubMobile', {}, 'de'));
+    });
   });
 });

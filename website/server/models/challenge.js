@@ -7,6 +7,7 @@ import * as Tasks from './task';
 import { model as User } from './user'; // eslint-disable-line import/no-cycle
 import { // eslint-disable-line import/no-cycle
   model as Group,
+  TAVERN_ID,
 } from './group';
 import { removeFromArray } from '../libs/collectionManipulators';
 import shared from '../../common';
@@ -45,6 +46,8 @@ const schema = new Schema({
     slug: { $type: String },
     name: { $type: String },
   }],
+  flags: { $type: mongoose.Schema.Types.Mixed, default: {} },
+  flagCount: { $type: Number, default: 0, min: 0 },
 }, {
   strict: true,
   minimize: false, // So empty objects are returned
@@ -68,7 +71,7 @@ schema.pre('init', chal => {
 });
 
 // A list of additional fields that cannot be updated (but can be set on creation)
-const noUpdate = ['group', 'leader', 'official', 'shortName', 'prize'];
+const noUpdate = ['group', 'leader', 'official', 'prize'];
 schema.statics.sanitizeUpdate = function sanitizeUpdate (updateObj) {
   return this.sanitize(updateObj, noUpdate);
 };
@@ -85,32 +88,39 @@ schema.methods.isMember = function isChallengeMember (user) {
 
 // Returns true if the user can modify (close, selectWinner, ...) the challenge
 schema.methods.canModify = function canModifyChallenge (user) {
-  return user.contributor.admin || this.isLeader(user);
+  return user.hasPermission('challengeAdmin') || this.isLeader(user);
 };
 
 // Returns true if user can join the challenge
 schema.methods.canJoin = function canJoinChallenge (user, group) {
-  if (group.type === 'guild' && group.privacy === 'public') return true;
   // for when leader has left private group that contains the challenge
   if (this.isLeader(user)) return true;
+  if (!group) return false;
+  if (group.type === 'guild' && group.privacy === 'public') {
+    return group._id === TAVERN_ID;
+  }
+  if (group.type === 'guild' && group.privacy === 'private') {
+    if (!group.hasActiveGroupPlan()) return false;
+  }
   return user.getGroups().indexOf(this.group) !== -1;
 };
 
 // Returns true if the challenge was successfully added to the user
 // or false if the user already in the challenge
-schema.methods.addToUser = async function addChallengeToUser (user) {
+schema.methods.addToUser = async function addChallengeToUser (user, session = null) {
   // Add challenge to users challenges atomically (with a condition that checks that it
   // is not there already) to prevent multiple concurrent requests from passing through
   // see https://github.com/HabitRPG/habitica/issues/11295
-  const result = await User.update(
+  const result = await User.updateOne(
     {
       _id: user._id,
       challenges: { $nin: [this._id] },
     },
     { $push: { challenges: this._id } },
+    { session },
   ).exec();
 
-  return !!result.nModified;
+  return !!result.modifiedCount;
 };
 
 // Returns true if user can view the challenge
@@ -123,7 +133,7 @@ schema.methods.canView = function canViewChallenge (user, group) {
 
 // Sync challenge tasks to user, including tags.
 // Used when user joins the challenge or to force sync.
-schema.methods.syncTasksToUser = async function syncChallengeTasksToUser (user) {
+schema.methods.syncTasksToUser = async function syncChallengeTasksToUser (user, session = null) {
   const challenge = this;
   challenge.shortName = challenge.shortName || challenge.name;
 
@@ -185,18 +195,18 @@ schema.methods.syncTasksToUser = async function syncChallengeTasksToUser (user) 
     if (!matchingTask.notes) matchingTask.notes = chalTask.notes;
     // add tag if missing
     if (matchingTask.tags.indexOf(challenge._id) === -1) matchingTask.tags.push(challenge._id);
-    toSave.push(matchingTask.save());
+    toSave.push(matchingTask.save({ session }));
   });
 
   // Flag deleted tasks as "broken"
   userTasks.forEach(userTask => {
     if (!_.find(challengeTasks, chalTask => chalTask._id === userTask.challenge.taskId)) {
       userTask.challenge.broken = 'TASK_DELETED';
-      toSave.push(userTask.save());
+      toSave.push(userTask.save({ session }));
     }
   });
 
-  toSave.push(user.save());
+  toSave.push(user.save({ session }));
   return Promise.all(toSave);
 };
 
@@ -249,7 +259,7 @@ async function _addTaskFn (challenge, tasks, memberId) {
     },
   };
   const updateUserParams = { ...updateTasksOrderQ, ...addToChallengeTagSet };
-  toSave.unshift(User.update({ _id: memberId }, updateUserParams).exec());
+  toSave.unshift(User.updateOne({ _id: memberId }, updateUserParams).exec());
 
   return Promise.all(toSave);
 }
@@ -278,11 +288,11 @@ schema.methods.updateTask = async function challengeUpdateTask (task) {
   const taskSchema = Tasks[task.type];
   // Updating instead of loading and saving for performances,
   // risks becoming a problem if we introduce more complexity in tasks
-  await taskSchema.update({
+  await taskSchema.updateMany({
     userId: { $exists: true },
     'challenge.id': challenge.id,
     'challenge.taskId': task._id,
-  }, updateCmd, { multi: true }).exec();
+  }, updateCmd).exec();
 };
 
 // Remove a task from challenge members
@@ -290,13 +300,13 @@ schema.methods.removeTask = async function challengeRemoveTask (task) {
   const challenge = this;
 
   // Set the task as broken
-  await Tasks.Task.update({
+  await Tasks.Task.updateMany({
     userId: { $exists: true },
     'challenge.id': challenge.id,
     'challenge.taskId': task._id,
   }, {
     $set: { 'challenge.broken': 'TASK_DELETED' },
-  }, { multi: true }).exec();
+  }).exec();
 };
 
 // Unlink challenges tasks (and the challenge itself) from user. TODO rename to 'leave'
@@ -311,9 +321,9 @@ schema.methods.unlinkTasks = async function challengeUnlinkTasks (user, keep, sa
   this.memberCount -= 1;
 
   if (keep === 'keep-all') {
-    await Tasks.Task.update(findQuery, {
+    await Tasks.Task.updateMany(findQuery, {
       $set: { challenge: {} },
-    }, { multi: true }).exec();
+    }).exec();
 
     const promises = [this.save()];
 
@@ -330,7 +340,7 @@ schema.methods.unlinkTasks = async function challengeUnlinkTasks (user, keep, sa
       removeFromArray(user.tasksOrder[`${task.type}s`], task._id);
     }
 
-    return task.remove();
+    return task.deleteOne();
   });
   user.markModified('tasksOrder');
   taskPromises.push(this.save());
@@ -352,15 +362,16 @@ schema.methods.closeChal = async function closeChal (broken = {}) {
   const brokenReason = broken.broken;
 
   // Delete the challenge
-  await this.model('Challenge').remove({ _id: challenge._id }).exec();
+  await this.model('Challenge').deleteOne({ _id: challenge._id }).exec();
 
   // Refund the leader if the challenge is deleted (no winner chosen)
   if (brokenReason === 'CHALLENGE_DELETED') {
-    await User.update({ _id: challenge.leader }, { $inc: { balance: challenge.prize / 4 } }).exec();
+    await User.updateOne({ _id: challenge.leader }, { $inc: { balance: challenge.prize / 4 } })
+      .exec();
   }
 
   // Update the challengeCount on the group
-  await Group.update({ _id: challenge.group }, { $inc: { challengeCount: -1 } }).exec();
+  await Group.updateOne({ _id: challenge.group }, { $inc: { challengeCount: -1 } }).exec();
 
   // Award prize to winner and notify
   if (winner) {
@@ -370,7 +381,7 @@ schema.methods.closeChal = async function closeChal (broken = {}) {
     // reimburse the leader
     const winnerCanGetGems = await winner.canGetGems();
     if (!winnerCanGetGems) {
-      await User.update(
+      await User.updateOne(
         { _id: challenge.leader },
         { $inc: { balance: challenge.prize / 4 } },
       ).exec();
@@ -393,37 +404,39 @@ schema.methods.closeChal = async function closeChal (broken = {}) {
       ]);
     }
     if (savedWinner.preferences.pushNotifications.wonChallenge !== false) {
-      sendPushNotification(savedWinner,
+      await sendPushNotification(
+        savedWinner,
         {
           title: challenge.name,
           message: shared.i18n.t('wonChallenge', savedWinner.preferences.language),
           identifier: 'wonChallenge',
-        });
+        },
+      );
     }
   }
 
   // Run some operations in the background without blocking the thread
   const backgroundTasks = [
     // And it's tasks
-    Tasks.Task.remove({ 'challenge.id': challenge._id, userId: { $exists: false } }).exec(),
+    Tasks.Task.deleteMany({ 'challenge.id': challenge._id, userId: { $exists: false } }).exec(),
     // Set the challenge tag to non-challenge status
     // and remove the challenge from the user's challenges
-    User.update({
+    User.updateMany({
       challenges: challenge._id,
       'tags.id': challenge._id,
     }, {
       $set: { 'tags.$.challenge': false },
       $pull: { challenges: challenge._id },
-    }, { multi: true }).exec(),
+    }).exec(),
     // Break users' tasks
-    Tasks.Task.update({
+    Tasks.Task.updateMany({
       'challenge.id': challenge._id,
     }, {
       $set: {
         'challenge.broken': brokenReason,
         'challenge.winner': winner && winner.profile.name,
       },
-    }, { multi: true }).exec(),
+    }).exec(),
   ];
 
   Promise.all(backgroundTasks);

@@ -1,6 +1,6 @@
 import {
   createAndPopulateGroup,
-  sleep,
+  waitFor,
 } from '../../../../helpers/api-integration/v3';
 
 describe('POST /groups/:id/chat/seen', () => {
@@ -12,26 +12,33 @@ describe('POST /groups/:id/chat/seen', () => {
       const { group, groupLeader, members } = await createAndPopulateGroup({
         groupDetails: {
           type: 'guild',
-          privacy: 'public',
+          privacy: 'private',
         },
         members: 1,
+        leaderDetails: {
+          'auth.timestamps.created': new Date('2022-01-01'),
+          balance: 10,
+        },
+        upgradeToGroupPlan: true,
       });
 
       guild = group;
       guildLeader = groupLeader;
-      guildMember = members[0]; // eslint-disable-line prefer-destructuring
+      [guildMember] = members;
 
       guildMessage = await guildLeader.post(`/groups/${guild._id}/chat`, { message: 'Some guild message' });
       guildMessage = guildMessage.message;
+
+      // the new message notification is added in the background
+      await waitFor(async () => {
+        await guildMember.sync();
+        expect(guildMember.newMessages[guild._id]).to.exist;
+      });
     });
 
     it('clears new messages for a guild', async () => {
-      await sleep(1);
-      await guildMember.sync();
       const initialNotifications = guildMember.notifications.length;
       await guildMember.post(`/groups/${guild._id}/chat/seen`);
-
-      await sleep(1);
 
       const guildThatHasSeenChat = await guildMember.get('/user');
 
@@ -51,6 +58,9 @@ describe('POST /groups/:id/chat/seen', () => {
           privacy: 'private',
         },
         members: 1,
+        leaderDetails: {
+          'auth.timestamps.created': new Date('2022-01-01'),
+        },
       });
 
       party = group;
@@ -59,15 +69,17 @@ describe('POST /groups/:id/chat/seen', () => {
 
       partyMessage = await partyLeader.post(`/groups/${party._id}/chat`, { message: 'Some party message' });
       partyMessage = partyMessage.message;
+
+      // the new message notification is added in the background
+      await waitFor(async () => {
+        await partyMember.sync();
+        expect(partyMember.newMessages[party._id]).to.exist;
+      });
     });
 
     it('clears new messages for a party', async () => {
-      await sleep(1);
-      await partyMember.sync();
       const initialNotifications = partyMember.notifications.length;
       await partyMember.post(`/groups/${party._id}/chat/seen`);
-
-      await sleep(1);
 
       const partyMemberThatHasSeenChat = await partyMember.get('/user');
 

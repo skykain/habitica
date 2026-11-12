@@ -3,7 +3,7 @@ import {
   generateUser,
   translate as t,
   generateGroup,
-  sleep,
+  waitFor,
   generateChallenge,
   server,
 } from '../../../../helpers/api-integration/v3';
@@ -75,7 +75,7 @@ describe('DELETE /tasks/:id', () => {
 
       await user.del(`/tasks/${task.id}`);
 
-      await sleep();
+      await server.waitForWebhookData(uuid);
 
       const body = server.getWebhookData(uuid);
 
@@ -86,7 +86,7 @@ describe('DELETE /tasks/:id', () => {
     it('does not send task activity webhooks if task is not user owned', async () => {
       const uuid = generateUUID();
 
-      await user.update({
+      await user.updateOne({
         balance: 10,
       });
       const guild = await generateGroup(user);
@@ -108,13 +108,31 @@ describe('DELETE /tasks/:id', () => {
         type: 'habit',
       });
 
+      // the challenge task is copied to the user in the background
+      const findUserCopy = async () => {
+        const tasks = await user.get('/tasks/user');
+        return tasks.find(task => task.challenge.taskId === challengeTask._id);
+      };
+      await waitFor(async () => {
+        expect(await findUserCopy()).to.exist;
+      });
+
+      const userTask = await user.post('/tasks/user', {
+        text: 'test habit',
+        type: 'habit',
+      });
+
       await user.del(`/tasks/${challengeTask.id}`);
 
-      await sleep();
+      await waitFor(async () => {
+        expect((await findUserCopy()).challenge.broken).to.equal('TASK_DELETED');
+      });
 
-      const body = server.getWebhookData(uuid);
+      await user.del(`/tasks/${userTask.id}`);
+      await server.waitForWebhookData(uuid);
 
-      expect(body).to.not.exist;
+      expect(server.getWebhookData(uuid).task.id).to.eql(userTask.id);
+      expect(server.getWebhookData(uuid)).to.not.exist;
     });
   });
 

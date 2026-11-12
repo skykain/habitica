@@ -1,4 +1,5 @@
-import _ from 'lodash';
+import find from 'lodash/find';
+import includes from 'lodash/includes';
 
 import { encrypt } from '../encryption';
 import { sendNotification as sendPushNotification } from '../pushNotifications';
@@ -16,12 +17,12 @@ import {
   model as Group,
 } from '../../models/group';
 
-function sendInvitePushNotification (userToInvite, groupLabel, group, publicGuild, res) {
+async function sendInvitePushNotification (userToInvite, groupLabel, group, publicGuild, res) {
   if (userToInvite.preferences.pushNotifications[`invited${groupLabel}`] === false) return;
 
   const identifier = group.type === 'guild' ? 'invitedGuild' : 'invitedParty';
 
-  sendPushNotification(
+  await sendPushNotification(
     userToInvite,
     {
       title: group.name,
@@ -58,11 +59,11 @@ function sendInviteEmail (userToInvite, groupLabel, group, inviter) {
 function inviteUserToGuild (userToInvite, group, inviter, publicGuild, res) {
   const uuid = userToInvite._id;
 
-  if (_.includes(userToInvite.guilds, group._id)) {
+  if (includes(userToInvite.guilds, group._id)) {
     throw new NotAuthorized(res.t('userAlreadyInGroup', { userId: uuid, username: userToInvite.profile.name }));
   }
 
-  if (_.find(userToInvite.invitations.guilds, { id: group._id })) {
+  if (find(userToInvite.invitations.guilds, { id: group._id })) {
     throw new NotAuthorized(res.t('userAlreadyInvitedToGroup', { userId: uuid, username: userToInvite.profile.name }));
   }
 
@@ -82,15 +83,14 @@ async function inviteUserToParty (userToInvite, group, inviter, res) {
   const uuid = userToInvite._id;
 
   // Do not add to invitations.parties array if the user is already invited to that party
-  if (_.find(userToInvite.invitations.parties, { id: group._id })) {
+  if (find(userToInvite.invitations.parties, { id: group._id })) {
     throw new NotAuthorized(res.t('userAlreadyPendingInvitation', { userId: uuid, username: userToInvite.profile.name }));
   }
 
   if (userToInvite.party._id) {
-    const userParty = await Group.getGroup({ user: userToInvite, groupId: 'party', fields: 'memberCount' });
+    const userParty = await Group.getGroup({ user: userToInvite, groupId: 'party', fields: '_id' });
 
-    // Allow user to be invited to a new party when they're partying solo
-    if (userParty && userParty.memberCount !== 1) throw new NotAuthorized(res.t('userAlreadyInAParty', { userId: uuid, username: userToInvite.profile.name }));
+    if (userParty) throw new NotAuthorized(res.t('userAlreadyInAParty', { userId: uuid, username: userToInvite.profile.name }));
   }
 
   const partyInvite = { id: group._id, name: group.name, inviter: inviter._id };
@@ -111,7 +111,7 @@ async function addInvitationToUser (userToInvite, group, inviter, res) {
 
   const groupLabel = group.type === 'guild' ? 'Guild' : 'Party';
   sendInviteEmail(userToInvite, groupLabel, group, inviter);
-  sendInvitePushNotification(userToInvite, groupLabel, group, publicGuild, res);
+  await sendInvitePushNotification(userToInvite, groupLabel, group, publicGuild, res);
 
   const userInvited = await userToInvite.save();
   if (group.type === 'guild') {
@@ -174,7 +174,7 @@ async function inviteByEmail (invite, group, inviter, req, res) {
       sentAt: Date.now(), // so we can let it expire
       cancelledPlan,
     });
-    const link = `/static/home?groupInvite=${encrypt(groupQueryString)}`;
+    const link = `/register?groupInvite=${encrypt(groupQueryString)}`;
 
     const variables = [
       { name: 'LINK', content: link },
@@ -182,7 +182,7 @@ async function inviteByEmail (invite, group, inviter, req, res) {
     ];
 
     if (group.type === 'guild') {
-      variables.push({ name: 'GUILD_NAME', content: group.name });
+      variables.push({ name: 'GROUP_NAME', content: group.name });
     }
 
     // Check for the email address not to be unsubscribed
@@ -207,6 +207,13 @@ async function inviteByUserName (username, group, inviter, req, res) {
     throw new BadRequest(res.t('cannotInviteSelfToGroup'));
   }
 
+  const objections = inviter.getObjectionsToInteraction('group-invitation', userToInvite);
+  if (objections.length > 0) {
+    throw new NotAuthorized(res.t(
+      objections[0],
+      { userId: userToInvite._id, username: userToInvite.profile.name },
+    ));
+  }
   return addInvitationToUser(userToInvite, group, inviter, res);
 }
 
